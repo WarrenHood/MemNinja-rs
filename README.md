@@ -8,6 +8,8 @@ A WIP Windows memory hacking crate.
 - Get a list of "writable" process memory regions
 - Read arbitrary process memory
 - Write arbitrary process memory
+- Memory scanning
+- Scripting (Lua)
 - Spawn threads in a process
 - Inject DLLs into a process
 - TODO: Think of more things

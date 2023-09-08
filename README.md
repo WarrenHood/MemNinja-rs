@@ -4,7 +4,7 @@ A WIP Windows memory hacking crate.
 
 ## This crate aims to eventually support the following features:
 
-- Get a `HANDLE` to a process
+- Get a `HANDLE` to a process by PID or window name
 - Get a list of "writable" process memory regions
 - Read arbitrary process memory
 - Write arbitrary process memory

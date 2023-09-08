@@ -1,6 +1,9 @@
 pub use anyhow::Result;
-pub use std::ffi::c_void;
+use std::ffi::c_char;
+pub use std::ffi::{c_void, CString};
+use windows::core::PCSTR;
 pub use windows::Win32::Foundation::HANDLE;
+use windows::Win32::Foundation::HWND;
 use windows::Win32::System::Diagnostics::Debug::ReadProcessMemory;
 use windows::Win32::System::Memory::{
     VirtualQueryEx, MEMORY_BASIC_INFORMATION, MEM_COMMIT, PAGE_EXECUTE_READWRITE,
@@ -8,6 +11,7 @@ use windows::Win32::System::Memory::{
 };
 use windows::Win32::System::SystemInformation::{GetSystemInfo, SYSTEM_INFO};
 use windows::Win32::System::Threading::{OpenProcess, PROCESS_ALL_ACCESS};
+use windows::Win32::UI::WindowsAndMessaging::{FindWindowA, GetWindowThreadProcessId};
 
 pub struct Process {
     handle: HANDLE,
@@ -79,13 +83,30 @@ impl Process {
             ))
         }
     }
-}
 
-pub fn process_attach(pid: u32) -> Result<Process> {
-    unsafe {
-        Ok(Process {
-            handle: OpenProcess(PROCESS_ALL_ACCESS, false, pid)?,
-        })
+    pub fn attach(pid: u32) -> Result<Process> {
+        unsafe {
+            Ok(Process {
+                handle: OpenProcess(PROCESS_ALL_ACCESS, false, pid)?,
+            })
+        }
+    }
+
+    pub fn attach_by_name(window_name: &str) -> Result<Process> {
+        let window_name = CString::new(window_name)?;
+        let mut pid: u32 = 0;
+        unsafe {
+            let game_window: HWND = FindWindowA(
+                PCSTR::null(),
+                std::mem::transmute::<*const c_char, PCSTR>(window_name.as_ptr()),
+            );
+            GetWindowThreadProcessId(game_window, Some(&mut pid));
+        };
+        if pid != 0 {
+            Self::attach(pid)
+        } else {
+            Err(anyhow::format_err!("Process not found"))
+        }
     }
 }
 

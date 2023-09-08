@@ -1,7 +1,5 @@
-use hoodmem::{self, Process};
-
 fn main() -> hoodmem::Result<()> {
-    let process: Process = hoodmem::process_attach(59548)?;
+    let process = hoodmem::Process::attach_by_name("Untitled - Notepad")?;
     let writable_regions = process.get_writable_regions();
     for region in writable_regions {
         println!(
@@ -12,7 +10,10 @@ fn main() -> hoodmem::Result<()> {
         let first_few_bytes = process.read_memory_bytes(region.base_address, 100);
         if let Ok(first_few_bytes) = first_few_bytes {
             println!("First 100 bytes: {:?}", &first_few_bytes);
-            println!("First 100 bytes as lossy UTF-8 string: {}", String::from_utf8_lossy(&first_few_bytes));
+            println!(
+                "First 100 bytes as lossy UTF-8 string: {}",
+                String::from_utf8_lossy(&first_few_bytes)
+            );
         }
     }
     Ok(())

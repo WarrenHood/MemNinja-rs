@@ -106,6 +106,25 @@ impl RegionResults {
         }
     }
 
+    pub fn get_results<T: Copy + Send + Sync>(&self) -> Option<Vec<(u64, T)>> {
+        if let Some(offsets) = self.hit_offsets.as_ref() {
+            if let Some(buffer) = self.buffer.as_ref() {
+                return Some(
+                    offsets
+                        .into_par_iter()
+                        .map(|offset| {
+                            (
+                                *offset + self.region.base_address,
+                                read_from_buffer::<T>(buffer, *offset),
+                            )
+                        })
+                        .collect(),
+                );
+            }
+        }
+        None
+    }
+
     pub fn print<T: std::fmt::Debug + Copy>(&self) {
         let results_count = if self.hit_offsets.is_some() {
             self.hit_offsets.as_ref().unwrap().len()
@@ -174,7 +193,9 @@ impl RegionResults {
             if self.hit_offsets.is_some() {
                 // We have existing hits, filter on them
                 self.hit_offsets = Some(
-                    self.hit_offsets.as_ref().unwrap()
+                    self.hit_offsets
+                        .as_ref()
+                        .unwrap()
                         .into_par_iter()
                         .map(|offset| {
                             (
@@ -250,8 +271,7 @@ impl Scanner {
                     .process
                     .read_memory_bytes(region.base_address, region.size as usize);
                 if let Ok(region_memory) = region_memory {
-                    self.results
-                        .insert(*region, RegionResults::new(*region));
+                    self.results.insert(*region, RegionResults::new(*region));
                     self.results
                         .get_mut(region)
                         .unwrap()

@@ -1,20 +1,24 @@
 fn main() -> hoodmem::Result<()> {
-    let process = hoodmem::Process::attach_by_name("Untitled - Notepad")?;
-    let writable_regions = process.get_writable_regions();
-    for region in writable_regions {
-        println!(
-            "Detected memory region: 0x{:x} -> 0x{:x}",
-            region.base_address,
-            region.base_address + region.size
-        );
-        let first_few_bytes = process.read_memory_bytes(region.base_address, 100);
-        if let Ok(first_few_bytes) = first_few_bytes {
-            println!("First 100 bytes: {:?}", &first_few_bytes);
-            println!(
-                "First 100 bytes as lossy UTF-8 string: {}",
-                String::from_utf8_lossy(&first_few_bytes)
-            );
-        }
-    }
+    let process = hoodmem::Process::attach_by_name("*AAA - Notepad")?;
+    let mut u8_scanner = hoodmem::scanner::KnownIVScanner::<u8>::new(process);
+    u8_scanner.new_scan();
+    println!("Scanning for 'A' (0x41)");
+    u8_scanner.scan(0x41)?;
+    println!("Found {} results", u8_scanner.results.len());
+        u8_scanner
+            .results
+            .keys()
+            .into_iter()
+            .take(100)
+            .map(|addr| {
+                format!(
+                    "0x{:016x} : {:016}",
+                    addr,
+                    u8_scanner.results.get(addr).unwrap().0
+                )
+            })
+            .for_each(|s| {
+                println!("{}", s);
+            });
     Ok(())
 }

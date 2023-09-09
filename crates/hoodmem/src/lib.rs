@@ -1,3 +1,6 @@
+pub mod scanner;
+pub mod util;
+
 pub use anyhow::Result;
 use std::ffi::c_char;
 pub use std::ffi::{c_void, CString};
@@ -13,10 +16,12 @@ use windows::Win32::System::SystemInformation::{GetSystemInfo, SYSTEM_INFO};
 use windows::Win32::System::Threading::{OpenProcess, PROCESS_ALL_ACCESS};
 use windows::Win32::UI::WindowsAndMessaging::{FindWindowA, GetWindowThreadProcessId};
 
+#[derive(Debug, Clone, Copy)]
 pub struct Process {
     handle: HANDLE,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct MemoryRegion {
     pub base_address: u64,
     pub size: u64,

@@ -4,6 +4,7 @@ pub mod util;
 pub use anyhow::Result;
 use std::ffi::c_char;
 pub use std::ffi::{c_void, CString};
+use std::hash::Hash;
 use windows::core::PCSTR;
 pub use windows::Win32::Foundation::HANDLE;
 use windows::Win32::Foundation::HWND;
@@ -21,7 +22,7 @@ pub struct Process {
     handle: HANDLE,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MemoryRegion {
     pub base_address: u64,
     pub size: u64,

@@ -247,6 +247,20 @@ impl Scanner {
         }
     }
 
+    /// Gets all scan results
+    pub fn get_results<T>(&self) -> Vec<(u64, T)>
+    where
+        T: Copy + Send + Sync,
+    {
+        self.results
+            .values()
+            .into_iter()
+            .map(|results| results.get_results::<T>())
+            .filter(|results| results.is_some())
+            .flat_map(|results| results.unwrap())
+            .collect()
+    }
+
     /// Clears all results and initializes the scanner for the first scan
     pub fn new_scan(&mut self) {
         self.results.clear();
@@ -257,6 +271,7 @@ impl Scanner {
     pub fn scan<T>(&mut self, filter: ScanFilter<T>) -> Result<()>
     where
         T: Copy
+            + std::fmt::Debug
             + Send
             + Sync
             + PartialOrd
@@ -264,6 +279,7 @@ impl Scanner {
             + std::ops::Sub<Output = T>
             + std::ops::Add<Output = T>,
     {
+        println!("Performing scan with filter: {:?}", filter);
         if self.is_new_scan {
             // Deal with new scans
             for region in self.regions.iter() {
@@ -288,8 +304,10 @@ impl Scanner {
                         // Only bother to update memory of things with no hit results yet, or with hit results of length > 0
                         let region_memory = self
                             .process
-                            .read_memory_bytes(region.base_address, region.size as usize)?;
-                        region_results.update_results(region_memory, filter);
+                            .read_memory_bytes(region.base_address, region.size as usize);
+                        if let Ok(region_memory) = region_memory {
+                            region_results.update_results(region_memory, filter);
+                        }
                     }
                 }
             }

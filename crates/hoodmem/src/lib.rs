@@ -99,6 +99,9 @@ impl Process {
     }
 
     pub fn attach_by_name(window_name: &str) -> Result<Process> {
+        if window_name.trim().len() == 0 {
+            return Err(anyhow::format_err!("Window name cannot be empty"));
+        }
         let window_name = CString::new(window_name)?;
         let mut pid: u32 = 0;
         unsafe {

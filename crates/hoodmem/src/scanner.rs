@@ -107,11 +107,14 @@ impl RegionResults {
     }
 
     pub fn get_results<T: Copy + Send + Sync>(&self) -> Option<Vec<(u64, T)>> {
+        let size_of_t =std::mem::size_of::<T>() as u64;
         if let Some(offsets) = self.hit_offsets.as_ref() {
             if let Some(buffer) = self.buffer.as_ref() {
                 return Some(
                     offsets
                         .into_par_iter()
+                        // Ensure we don't read any results outside the buffer
+                        .filter(|offset| **offset + size_of_t <= buffer.len() as u64)
                         .map(|offset| {
                             (
                                 *offset + self.region.base_address,
@@ -168,6 +171,7 @@ impl RegionResults {
             + std::ops::Sub<Output = T>
             + std::ops::Add<Output = T>,
     {
+        let size_of_t =std::mem::size_of::<T>() as u64;
         if self.buffer.is_none() {
             // There was no previous buffer, this must be the first scan
             match filter {
@@ -178,6 +182,8 @@ impl RegionResults {
                     self.hit_offsets = Some(
                         scan_range
                             .into_par_iter()
+                            // Ensure we don't read any results outside the buffer
+                            .filter(|offset| *offset + size_of_t <= region_buf.len() as u64)
                             .map(|offset| (offset, read_from_buffer::<T>(&region_buf, offset)))
                             .filter(|(_, val)| filter.matches(val, val))
                             .map(|(addr, _)| addr)
@@ -197,6 +203,8 @@ impl RegionResults {
                         .as_ref()
                         .unwrap()
                         .into_par_iter()
+                        // Ensure we don't read any results outside the buffer
+                        .filter(|offset| **offset + size_of_t <= region_buf.len() as u64)
                         .map(|offset| {
                             (
                                 offset,
@@ -213,6 +221,8 @@ impl RegionResults {
                 self.hit_offsets = Some(
                     scan_range
                         .into_par_iter()
+                        // Ensure we don't read any results outside the buffer
+                        .filter(|offset| *offset + size_of_t <= region_buf.len() as u64)
                         .map(|offset| {
                             (
                                 offset,
@@ -226,7 +236,14 @@ impl RegionResults {
                 )
             }
         }
-        self.buffer = Some(region_buf)
+        if self.hit_offsets.as_ref().is_none() || self.hit_offsets.as_ref().unwrap().len() > 0 {
+            // Only keep track of previous values if we have hits, or haven't scanned yet
+            self.buffer = Some(region_buf)
+        }
+        else {
+            // Hit offsets length is 0
+            self.buffer = None
+        }
     }
 }
 
@@ -247,6 +264,26 @@ impl Scanner {
         }
     }
 
+    /// Count the number of results so far
+    pub fn count_results(&self) -> Option<usize> {
+        if self.is_new_scan {
+            return None;
+        }
+        let hit_offsets: Vec<&Vec<u64>> = self.results
+            .values()
+            .into_iter()
+            .map(|result| result.hit_offsets.as_ref())
+            .filter(|hit_offsets| hit_offsets.is_some())
+            .map(|hit_offsets| hit_offsets.unwrap()).collect();
+
+        if hit_offsets.len() == 0 {
+            // We have not yet scanned anything
+            return None;
+        }
+
+        Some(hit_offsets.iter().map(|hit_offsets| hit_offsets.len()).sum())
+    }
+
     /// Gets all scan results
     pub fn get_results<T>(&self) -> Vec<(u64, T)>
     where
@@ -258,6 +295,21 @@ impl Scanner {
             .map(|results| results.get_results::<T>())
             .filter(|results| results.is_some())
             .flat_map(|results| results.unwrap())
+            .collect()
+    }
+
+    /// Gets first `n` scan results
+    pub fn get_first_results<T>(&self, n: usize) -> Vec<(u64, T)>
+    where
+        T: Copy + Send + Sync,
+    {
+        self.results
+            .values()
+            .into_iter()
+            .map(|results| results.get_results::<T>())
+            .filter(|results| results.is_some())
+            .flat_map(|results| results.unwrap())
+            .take(n)
             .collect()
     }
 

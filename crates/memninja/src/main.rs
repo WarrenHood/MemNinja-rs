@@ -1,5 +1,4 @@
 use std::borrow::BorrowMut;
-use std::fmt::format;
 use std::str::FromStr;
 
 use eframe::egui::{self, Margin};
@@ -9,7 +8,8 @@ use hoodmem::scanner::ScanFilter;
 
 #[derive(Default)]
 struct MemNinja {
-    process: Option<hoodmem::Process>,
+    #[cfg(target_os="windows")]
+    process: Option<hoodmem::WinProcess>,
     scanner: Option<hoodmem::scanner::Scanner>,
     process_id: String,
     window_name: String,
@@ -224,7 +224,7 @@ impl MemNinja {
                         match self.attach_type {
                             AttachType::ByPID => {
                                 if let Ok(pid) = self.process_id.parse::<u32>() {
-                                    if let Ok(process) = hoodmem::Process::attach(pid) {
+                                    if let Ok(process) = hoodmem::attach_external(pid) {
                                         self.scanner =
                                             Some(hoodmem::scanner::Scanner::new(process));
                                         self.attached = true;
@@ -243,7 +243,7 @@ impl MemNinja {
                             }
                             AttachType::ByWindowName => {
                                 if let Ok(process) =
-                                    hoodmem::Process::attach_by_name(&self.window_name)
+                                    hoodmem::attach_external_by_name(&self.window_name)
                                 {
                                     self.scanner = Some(hoodmem::scanner::Scanner::new(process));
                                     self.attached = true;

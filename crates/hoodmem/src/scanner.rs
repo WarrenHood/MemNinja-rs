@@ -107,7 +107,7 @@ impl RegionResults {
     }
 
     pub fn get_results<T: Copy + Send + Sync>(&self) -> Option<Vec<(u64, T)>> {
-        let size_of_t =std::mem::size_of::<T>() as u64;
+        let size_of_t = std::mem::size_of::<T>() as u64;
         if let Some(offsets) = self.hit_offsets.as_ref() {
             if let Some(buffer) = self.buffer.as_ref() {
                 return Some(
@@ -171,7 +171,7 @@ impl RegionResults {
             + std::ops::Sub<Output = T>
             + std::ops::Add<Output = T>,
     {
-        let size_of_t =std::mem::size_of::<T>() as u64;
+        let size_of_t = std::mem::size_of::<T>() as u64;
         if self.buffer.is_none() {
             // There was no previous buffer, this must be the first scan
             match filter {
@@ -239,8 +239,7 @@ impl RegionResults {
         if self.hit_offsets.as_ref().is_none() || self.hit_offsets.as_ref().unwrap().len() > 0 {
             // Only keep track of previous values if we have hits, or haven't scanned yet
             self.buffer = Some(region_buf)
-        }
-        else {
+        } else {
             // Hit offsets length is 0
             self.buffer = None
         }
@@ -248,17 +247,15 @@ impl RegionResults {
 }
 
 pub struct Scanner {
-    process: Process,
-    regions: Vec<MemoryRegion>,
+    process: Box<dyn Process>,
     pub results: HashMap<MemoryRegion, RegionResults>,
     is_new_scan: bool,
 }
 
 impl Scanner {
-    pub fn new(process: Process) -> Self {
+    pub fn new(process: Box<dyn Process>) -> Self {
         Self {
             process,
-            regions: process.get_writable_regions(),
             results: HashMap::new(),
             is_new_scan: true,
         }
@@ -269,19 +266,26 @@ impl Scanner {
         if self.is_new_scan {
             return None;
         }
-        let hit_offsets: Vec<&Vec<u64>> = self.results
+        let hit_offsets: Vec<&Vec<u64>> = self
+            .results
             .values()
             .into_iter()
             .map(|result| result.hit_offsets.as_ref())
             .filter(|hit_offsets| hit_offsets.is_some())
-            .map(|hit_offsets| hit_offsets.unwrap()).collect();
+            .map(|hit_offsets| hit_offsets.unwrap())
+            .collect();
 
         if hit_offsets.len() == 0 {
             // We have not yet scanned anything
             return None;
         }
 
-        Some(hit_offsets.iter().map(|hit_offsets| hit_offsets.len()).sum())
+        Some(
+            hit_offsets
+                .iter()
+                .map(|hit_offsets| hit_offsets.len())
+                .sum(),
+        )
     }
 
     /// Gets all scan results
@@ -332,9 +336,10 @@ impl Scanner {
             + std::ops::Add<Output = T>,
     {
         println!("Performing scan with filter: {:?}", filter);
+        let regions = self.process.get_writable_regions();
         if self.is_new_scan {
             // Deal with new scans
-            for region in self.regions.iter() {
+            for region in regions.iter() {
                 let region_memory = self
                     .process
                     .read_memory_bytes(region.base_address, region.size as usize);
@@ -348,7 +353,7 @@ impl Scanner {
             }
         } else {
             // Filter existing results
-            for region in &self.regions {
+            for region in &regions {
                 if let Some(region_results) = self.results.get_mut(&region) {
                     if region_results.hit_offsets.as_ref().is_none()
                         || region_results.hit_offsets.as_ref().unwrap().len() > 0

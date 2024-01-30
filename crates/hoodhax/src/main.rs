@@ -1,6 +1,6 @@
 use std::{str::FromStr, io::Write};
 
-use hoodmem::scanner::ScanFilter;
+use hoodmem::{scanner::ScanFilter, Process};
 
 #[derive(Debug, Clone, Copy)]
 enum ScanType {
@@ -115,7 +115,8 @@ where
 }
 
 fn main() -> hoodmem::Result<()> {
-    let mut process: Option<hoodmem::Process> = None;
+    #[allow(unused_assignments)]
+    let mut process: Option<Box<dyn Process>> = None;
     let mut scanner: Option<hoodmem::scanner::Scanner> = None;
     let mut scan_type: ScanType = ScanType::U32;
 
@@ -131,7 +132,7 @@ fn main() -> hoodmem::Result<()> {
                     "attach" => {
                         if command.len() == 2 {
                             if let Ok(pid) = command[1].trim().parse::<u32>() {
-                                if let Ok(attach_result) = hoodmem::Process::attach(pid) {
+                                if let Ok(attach_result) = hoodmem::attach_external(pid) {
                                     process = Some(attach_result);
                                     scanner =
                                         Some(hoodmem::scanner::Scanner::new(process.unwrap()));

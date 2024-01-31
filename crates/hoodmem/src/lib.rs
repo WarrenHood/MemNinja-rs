@@ -8,6 +8,9 @@ pub use std::ffi::{c_void, CString};
 #[cfg(target_os = "windows")]
 pub use crate::platforms::windows::*;
 
+#[cfg(target_os = "linux")]
+pub use crate::platforms::linux::*;
+
 pub trait MemoryRead {
     fn read_memory_bytes(&self, address: u64, bytes_to_read: usize) -> Result<Vec<u8>>;
 }
@@ -40,11 +43,16 @@ pub trait ScannableMemoryRegions {
 pub fn attach_external(pid: u32) -> Result<Box<dyn Process>> {
     #[cfg(target_os = "windows")]
     return Ok(Box::new(WinProcess::attach(pid)?));
+
+    #[cfg(target_os = "linux")]
+    return Ok(Box::new(LinuxProcess::attach(pid)))
 }
 
 pub fn attach_external_by_name(name: &str) -> Result<Box<dyn Process>> {
     #[cfg(target_os = "windows")]
     return Ok(Box::new(WinProcess::attach_by_name(name)?));
+    #[cfg(target_os = "linux")]
+    return Ok(Box::new(LinuxProcess::attach_by_proc_name(name)))
 }
 
 pub trait Process: MemoryRead + ScannableMemoryRegions + 'static {}

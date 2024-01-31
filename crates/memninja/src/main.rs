@@ -4,12 +4,12 @@ use std::str::FromStr;
 use eframe::egui::{self, Margin};
 use eframe::epaint::Color32;
 use eframe::{run_native, App};
+use hoodmem::Process;
 use hoodmem::scanner::ScanFilter;
 
 #[derive(Default)]
 struct MemNinja {
-    #[cfg(target_os="windows")]
-    process: Option<hoodmem::WinProcess>,
+    process: Option<Box<dyn Process>>,
     scanner: Option<hoodmem::scanner::Scanner>,
     process_id: String,
     window_name: String,

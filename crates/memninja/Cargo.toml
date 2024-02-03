@@ -7,5 +7,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.75"
-eframe = "0.22.0"
+egui = "0.25.0"
+eframe = "0.25.0"
+egui_tiles = "0.6.0"
 hoodmem = { path = "../hoodmem" }

@@ -1,14 +1,20 @@
 use std::borrow::BorrowMut;
 use std::str::FromStr;
 
-use eframe::egui::{self, Margin};
-use eframe::epaint::Color32;
-use eframe::{run_native, App};
-use hoodmem::Process;
+use eframe::egui::{Color32, Margin, Ui};
+use eframe::run_native;
+use eframe::App;
+use egui::{Vec2, WidgetText};
+use egui_tiles::{Behavior, Linear, Tile, TileId, Tiles, Tree};
 use hoodmem::scanner::ScanFilter;
+use hoodmem::Process;
 
-#[derive(Default)]
 struct MemNinja {
+    tree: egui_tiles::Tree<Pane>,
+    tree_behaviour: TreeBehaviour,
+}
+
+struct TreeBehaviour {
     process: Option<Box<dyn Process>>,
     scanner: Option<hoodmem::scanner::Scanner>,
     process_id: String,
@@ -20,185 +26,64 @@ struct MemNinja {
     scan_results: ScanResults,
 }
 
-#[derive(Default, PartialEq, Debug)]
-enum ScanType {
-    #[default]
-    Exact,
-    Unknown,
-    Increased,
-    Decreased
-}
+impl Behavior<Pane> for TreeBehaviour {
+    fn pane_ui(
+        &mut self,
+        ui: &mut Ui,
+        _tile_id: TileId,
+        pane: &mut Pane,
+    ) -> egui_tiles::UiResponse {
+        egui::Frame::default()
+            .inner_margin(Margin::same(5.0))
+            .show(ui, |ui| match pane.pane_type {
+                PaneType::Attach => self.render_attach_panel(ui),
+                PaneType::Results => self.render_results_panel(ui),
+                PaneType::Scan => self.render_scanner_panel(ui),
+            });
 
-impl std::fmt::Display for ScanType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let fallback = format!("{:?}", self);
-        write!(
-            f,
-            "{}",
-            match self {
-                ScanType::Exact => "Exact",
-                ScanType::Unknown => "Unknown",
-                _ => &fallback
-            }
-        )
+        egui_tiles::UiResponse::None
+
+        // You can make your pane draggable like so:
+        // if ui
+        //     .add(egui::Button::new("Drag me!").sense(egui::Sense::drag()))
+        //     .drag_started()
+        // {
+        //     egui_tiles::UiResponse::DragStarted
+        // } else {
+        //     egui_tiles::UiResponse::None
+        // }
+    }
+
+    fn tab_title_for_pane(&mut self, pane: &Pane) -> WidgetText {
+        pane.get_pane_title().into()
     }
 }
 
-#[derive(Default, PartialEq)]
-enum ValueType {
-    #[default]
-    U8,
-    U16,
-    U32,
-    U64,
-    I8,
-    I16,
-    I32,
-    I64,
-    F32,
-    F64,
+enum PaneType {
+    Attach,
+    Results,
+    Scan,
 }
 
-impl std::fmt::Display for ValueType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                ValueType::U8 => "8-bit Integer (unsigned)",
-                ValueType::U16 => "16-bit Integer (unsigned)",
-                ValueType::U32 => "32-bit Integer (unsigned)",
-                ValueType::U64 => "64-bit Integer (unsigned)",
-                ValueType::I8 => "8-bit Integer (signed)",
-                ValueType::I16 => "16-bit Integer (signed)",
-                ValueType::I32 => "32-bit Integer (signed)",
-                ValueType::I64 => "64-bit Integer (signed)",
-                ValueType::F32 => "Float (32-bit)",
-                ValueType::F64 => "Float (64-bit)",
-            }
-        )
+struct Pane {
+    pane_type: PaneType,
+}
+
+impl Pane {
+    fn from_type(pane_type: PaneType) -> Self {
+        Self { pane_type }
     }
-}
 
-#[derive(Default)]
-struct ScanOptions {
-    value_type: ValueType,
-    scan_type: ScanType,
-    is_hex: bool,
-    scan_input: String,
-}
-
-#[derive(Default)]
-struct ScanResults {
-    scan_status: egui::RichText,
-    num_results: String,
-    visible_results: Vec<(u64, String)>,
-}
-
-impl MemNinja {
-    fn new(_cc: &eframe::CreationContext<'_>) -> Self {
-        // Customize egui here with cc.egui_ctx.set_fonts and cc.egui_ctx.set_visuals.
-        // Restore app state using cc.storage (requires the "persistence" feature).
-        // Use the cc.gl (a glow::Context) to create graphics shaders and buffers that you can use
-        // for e.g. egui::PaintCallback.
-        Self::default()
-    }
-}
-
-#[derive(Debug, Default, PartialEq)]
-enum AttachType {
-    #[default]
-    ByPID,
-    ByWindowName,
-}
-
-fn do_scan<T>(
-    scanner: &mut hoodmem::scanner::Scanner,
-    scan_options: &ScanOptions,
-    scan_results: &mut ScanResults,
-) where
-    T: Copy
-        + std::fmt::Debug
-        + Send
-        + Sync
-        + PartialOrd
-        + PartialEq
-        + std::ops::Sub<Output = T>
-        + std::ops::Add<Output = T>
-        + FromStr,
-{
-    match scan_options.scan_type {
-        ScanType::Exact => {
-            if let Ok(scan_value) = scan_options.scan_input.parse::<T>() {
-                if let Err(scan_err) = scanner.scan(ScanFilter::Exact::<T>(scan_value)) {
-                    eprintln!("Scan failed: {}", scan_err);
-                    scan_results.scan_status =
-                        egui::RichText::new("Scan failed (see console for details)")
-                            .color(Color32::RED);
-                } else {
-                    scan_results.scan_status =
-                        egui::RichText::new("Scan succeeded").color(Color32::LIGHT_GREEN);
-                }
-            } else {
-                scan_results.scan_status =
-                    egui::RichText::new("Invalid scan value").color(Color32::RED);
-                scan_results.visible_results.clear();
-            }
+    fn get_pane_title(&self) -> &str {
+        match self.pane_type {
+            PaneType::Attach => "Attach",
+            PaneType::Results => "Scan Results",
+            PaneType::Scan => "Scanner",
         }
-        ScanType::Unknown => {
-            if let Err(scan_err) = scanner.scan(ScanFilter::Unknown::<T>) {
-                eprintln!("Scan failed: {}", scan_err);
-                scan_results.scan_status =
-                    egui::RichText::new("Scan failed (see console for details)")
-                        .color(Color32::RED);
-            } else {
-                scan_results.scan_status =
-                    egui::RichText::new("Scan succeeded").color(Color32::LIGHT_GREEN);
-            }
-        }
-        ScanType::Increased => {
-            if let Err(scan_err) = scanner.scan(ScanFilter::Increased::<T>) {
-                eprintln!("Scan failed: {}", scan_err);
-                scan_results.scan_status =
-                    egui::RichText::new("Scan failed (see console for details)")
-                        .color(Color32::RED);
-            } else {
-                scan_results.scan_status =
-                    egui::RichText::new("Scan succeeded").color(Color32::LIGHT_GREEN);
-            }
-        },
-        ScanType::Decreased => {
-            if let Err(scan_err) = scanner.scan(ScanFilter::Decreased::<T>) {
-                eprintln!("Scan failed: {}", scan_err);
-                scan_results.scan_status =
-                    egui::RichText::new("Scan failed (see console for details)")
-                        .color(Color32::RED);
-            } else {
-                scan_results.scan_status =
-                    egui::RichText::new("Scan succeeded").color(Color32::LIGHT_GREEN);
-            }
-        },
-    }
-
-    if let Some(num_results) = scanner.count_results() {
-        scan_results.num_results = format!("{} results", num_results);
-        if num_results <= 50 {
-            scan_results.visible_results = scanner
-                .get_first_results::<T>(50)
-                .iter()
-                .map(|(addr, val)| (*addr, format!("{:?}", *val)))
-                .collect();
-        } else {
-            scan_results.visible_results.clear();
-        }
-    } else {
-        scan_results.num_results = "No results yet".into();
-        scan_results.visible_results.clear();
     }
 }
 
-impl MemNinja {
-    /// Render the attach to process panel
+impl TreeBehaviour {
     fn render_attach_panel(&mut self, ui: &mut egui::Ui) {
         ui.vertical_centered_justified(|ui| {
             ui.label("Attach to process");
@@ -447,44 +332,223 @@ impl MemNinja {
     }
 }
 
+#[derive(Default, PartialEq, Debug)]
+enum ScanType {
+    #[default]
+    Exact,
+    Unknown,
+    Increased,
+    Decreased,
+}
+
+impl std::fmt::Display for ScanType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let fallback = format!("{:?}", self);
+        write!(
+            f,
+            "{}",
+            match self {
+                ScanType::Exact => "Exact",
+                ScanType::Unknown => "Unknown",
+                _ => &fallback,
+            }
+        )
+    }
+}
+
+#[derive(Default, PartialEq)]
+enum ValueType {
+    #[default]
+    U8,
+    U16,
+    U32,
+    U64,
+    I8,
+    I16,
+    I32,
+    I64,
+    F32,
+    F64,
+}
+
+fn create_tree() -> Tree<Pane> {
+    let mut tiles = Tiles::default();
+    let attach_pane = tiles.insert_pane(Pane::from_type(PaneType::Attach));
+    let scan_pane = tiles.insert_pane(Pane::from_type(PaneType::Scan));
+    let results_pane = tiles.insert_pane(Pane::from_type(PaneType::Results));
+
+    let layout_left = Linear {
+        children: vec![attach_pane, results_pane],
+        dir: egui_tiles::LinearDir::Vertical,
+        ..Default::default()
+    };
+    let left = tiles.insert_new(egui_tiles::Tile::Container(egui_tiles::Container::Linear(
+        layout_left,
+    )));
+
+    let layout = Linear {
+        children: vec![left, scan_pane],
+        dir: egui_tiles::LinearDir::Horizontal,
+        ..Default::default()
+    };
+
+    let root = tiles.insert_new(Tile::Container(egui_tiles::Container::Linear(layout)));
+    Tree::new("root", root, tiles)
+}
+
+impl std::fmt::Display for ValueType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                ValueType::U8 => "8-bit Integer (unsigned)",
+                ValueType::U16 => "16-bit Integer (unsigned)",
+                ValueType::U32 => "32-bit Integer (unsigned)",
+                ValueType::U64 => "64-bit Integer (unsigned)",
+                ValueType::I8 => "8-bit Integer (signed)",
+                ValueType::I16 => "16-bit Integer (signed)",
+                ValueType::I32 => "32-bit Integer (signed)",
+                ValueType::I64 => "64-bit Integer (signed)",
+                ValueType::F32 => "Float (32-bit)",
+                ValueType::F64 => "Float (64-bit)",
+            }
+        )
+    }
+}
+
+#[derive(Default)]
+struct ScanOptions {
+    value_type: ValueType,
+    scan_type: ScanType,
+    is_hex: bool,
+    scan_input: String,
+}
+
+#[derive(Default)]
+struct ScanResults {
+    scan_status: egui::RichText,
+    num_results: String,
+    visible_results: Vec<(u64, String)>,
+}
+
+impl Default for MemNinja {
+    fn default() -> Self {
+        Self {
+            tree: create_tree(),
+            tree_behaviour: TreeBehaviour {
+                process: Default::default(),
+                scanner: Default::default(),
+                process_id: Default::default(),
+                window_name: Default::default(),
+                attach_type: Default::default(),
+                attached: Default::default(),
+                attached_status: Default::default(),
+                scan_options: Default::default(),
+                scan_results: Default::default(),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Default, PartialEq)]
+enum AttachType {
+    #[default]
+    ByPID,
+    ByWindowName,
+}
+
+fn do_scan<T>(
+    scanner: &mut hoodmem::scanner::Scanner,
+    scan_options: &ScanOptions,
+    scan_results: &mut ScanResults,
+) where
+    T: Copy
+        + std::fmt::Debug
+        + Send
+        + Sync
+        + PartialOrd
+        + PartialEq
+        + std::ops::Sub<Output = T>
+        + std::ops::Add<Output = T>
+        + FromStr,
+{
+    match scan_options.scan_type {
+        ScanType::Exact => {
+            if let Ok(scan_value) = scan_options.scan_input.parse::<T>() {
+                if let Err(scan_err) = scanner.scan(ScanFilter::Exact::<T>(scan_value)) {
+                    eprintln!("Scan failed: {}", scan_err);
+                    scan_results.scan_status =
+                        egui::RichText::new("Scan failed (see console for details)")
+                            .color(Color32::RED);
+                } else {
+                    scan_results.scan_status =
+                        egui::RichText::new("Scan succeeded").color(Color32::LIGHT_GREEN);
+                }
+            } else {
+                scan_results.scan_status =
+                    egui::RichText::new("Invalid scan value").color(Color32::RED);
+                scan_results.visible_results.clear();
+            }
+        }
+        ScanType::Unknown => {
+            if let Err(scan_err) = scanner.scan(ScanFilter::Unknown::<T>) {
+                eprintln!("Scan failed: {}", scan_err);
+                scan_results.scan_status =
+                    egui::RichText::new("Scan failed (see console for details)")
+                        .color(Color32::RED);
+            } else {
+                scan_results.scan_status =
+                    egui::RichText::new("Scan succeeded").color(Color32::LIGHT_GREEN);
+            }
+        }
+        ScanType::Increased => {
+            if let Err(scan_err) = scanner.scan(ScanFilter::Increased::<T>) {
+                eprintln!("Scan failed: {}", scan_err);
+                scan_results.scan_status =
+                    egui::RichText::new("Scan failed (see console for details)")
+                        .color(Color32::RED);
+            } else {
+                scan_results.scan_status =
+                    egui::RichText::new("Scan succeeded").color(Color32::LIGHT_GREEN);
+            }
+        }
+        ScanType::Decreased => {
+            if let Err(scan_err) = scanner.scan(ScanFilter::Decreased::<T>) {
+                eprintln!("Scan failed: {}", scan_err);
+                scan_results.scan_status =
+                    egui::RichText::new("Scan failed (see console for details)")
+                        .color(Color32::RED);
+            } else {
+                scan_results.scan_status =
+                    egui::RichText::new("Scan succeeded").color(Color32::LIGHT_GREEN);
+            }
+        }
+    }
+
+    if let Some(num_results) = scanner.count_results() {
+        scan_results.num_results = format!("{} results", num_results);
+        if num_results <= 50 {
+            scan_results.visible_results = scanner
+                .get_first_results::<T>(50)
+                .iter()
+                .map(|(addr, val)| (*addr, format!("{:?}", *val)))
+                .collect();
+        } else {
+            scan_results.visible_results.clear();
+        }
+    } else {
+        scan_results.num_results = "No results yet".into();
+        scan_results.visible_results.clear();
+    }
+}
+
 impl App for MemNinja {
-    fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Main app panel
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.columns(2, |cols| {
-                // Attach to processes panel
-                egui::Frame::default()
-                    .stroke(eframe::epaint::Stroke {
-                        width: 1.0,
-                        color: Color32::from_rgb(20, 20, 20),
-                    })
-                    .inner_margin(Margin::same(5.0))
-                    .show(&mut cols[0], |ui| {
-                        self.render_attach_panel(ui);
-                    });
-
-                // Results panel
-                egui::Frame::default()
-                    .stroke(eframe::epaint::Stroke {
-                        width: 1.0,
-                        color: Color32::from_rgb(20, 20, 20),
-                    })
-                    .inner_margin(Margin::same(5.0))
-                    .show(&mut cols[0], |ui| {
-                        self.render_results_panel(ui);
-                    });
-
-                // Scan panel
-                egui::Frame::default()
-                    .stroke(eframe::epaint::Stroke {
-                        width: 1.0,
-                        color: Color32::from_rgb(20, 20, 20),
-                    })
-                    .inner_margin(Margin::same(5.0))
-                    .show(&mut cols[1], |ui| {
-                        self.render_scanner_panel(ui);
-                    });
-            });
+            // Tree UI
+            self.tree.ui(&mut self.tree_behaviour, ui);
         });
     }
 }
@@ -492,12 +556,15 @@ impl App for MemNinja {
 fn main() -> eframe::Result<()> {
     let native_options = eframe::NativeOptions {
         hardware_acceleration: eframe::HardwareAcceleration::Preferred,
-        min_window_size: Some(egui::vec2(1000.0, 600.0)),
+        viewport: egui::ViewportBuilder {
+            min_inner_size: Some(Vec2 { x: 1280.0, y: 600.0 }),
+            ..Default::default()
+        },
         ..Default::default()
     };
     run_native(
         "MemNinja",
         native_options,
-        Box::new(|cc| Box::new(MemNinja::new(cc))),
+        Box::new(|_cc| Box::new(MemNinja::default())),
     )
 }

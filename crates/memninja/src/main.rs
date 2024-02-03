@@ -1,6 +1,7 @@
 use std::borrow::BorrowMut;
 use std::fmt::Pointer;
 use std::str::FromStr;
+use std::{default, mem};
 
 use eframe::egui::{Color32, Margin, Ui};
 use eframe::run_native;
@@ -16,6 +17,94 @@ struct MemNinja {
     tree_behaviour: TreeBehaviour,
 }
 
+enum MemValue {
+    U8(u8),
+    U16(u16),
+    U32(u32),
+    U64(u64),
+    I8(i8),
+    I16(i16),
+    I32(i32),
+    I64(i64),
+    F32(f32),
+    F64(f64),
+    Null,
+}
+
+impl std::fmt::Display for MemValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MemValue::U8(x) => write!(f, "{}", x),
+            MemValue::U16(x) => write!(f, "{}", x),
+            MemValue::U32(x) => write!(f, "{}", x),
+            MemValue::U64(x) => write!(f, "{}", x),
+            MemValue::I8(x) => write!(f, "{}", x),
+            MemValue::I16(x) => write!(f, "{}", x),
+            MemValue::I32(x) => write!(f, "{}", x),
+            MemValue::I64(x) => write!(f, "{}", x),
+            MemValue::F32(x) => write!(f, "{}", x),
+            MemValue::F64(x) => write!(f, "{}", x),
+            MemValue::Null => write!(f, "null"),
+        }
+    }
+}
+
+#[derive(Default, PartialEq, Clone, Copy)]
+enum MemType {
+    #[default]
+    U8,
+    U16,
+    U32,
+    U64,
+    I8,
+    I16,
+    I32,
+    I64,
+    F32,
+    F64,
+    Unknown,
+}
+
+impl std::fmt::Display for MemType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                MemType::U8 => "8-bit Integer (unsigned)",
+                MemType::U16 => "16-bit Integer (unsigned)",
+                MemType::U32 => "32-bit Integer (unsigned)",
+                MemType::U64 => "64-bit Integer (unsigned)",
+                MemType::I8 => "8-bit Integer (signed)",
+                MemType::I16 => "16-bit Integer (signed)",
+                MemType::I32 => "32-bit Integer (signed)",
+                MemType::I64 => "64-bit Integer (signed)",
+                MemType::F32 => "Float (32-bit)",
+                MemType::F64 => "Float (64-bit)",
+                MemType::Unknown => "Unknown",
+            }
+        )
+    }
+}
+
+impl From<MemValue> for MemType {
+    fn from(value: MemValue) -> Self {
+        match value {
+            MemValue::U8(_) => Self::U8,
+            MemValue::U16(_) => Self::U16,
+            MemValue::U32(_) => Self::U32,
+            MemValue::U64(_) => Self::U64,
+            MemValue::I8(_) => Self::I8,
+            MemValue::I16(_) => Self::I16,
+            MemValue::I32(_) => Self::I32,
+            MemValue::I64(_) => Self::I64,
+            MemValue::F32(_) => Self::F32,
+            MemValue::F64(_) => Self::F64,
+            MemValue::Null => Self::Unknown,
+        }
+    }
+}
+
 struct TreeBehaviour {
     process: Option<Box<dyn Process>>,
     scanner: Option<hoodmem::scanner::Scanner>,
@@ -25,9 +114,10 @@ struct TreeBehaviour {
     attached: bool,
     attached_status: egui::RichText,
     scan_options: ScanOptions,
-    scan_results: ScanResults,
+    scan_results: MemValues,
     min_results_index: usize,
     max_results_index: usize,
+    cheats: Vec<Cheat>,
 }
 
 impl Behavior<Pane> for TreeBehaviour {
@@ -43,6 +133,7 @@ impl Behavior<Pane> for TreeBehaviour {
                 PaneType::Attach => self.render_attach_panel(ui),
                 PaneType::Results => self.render_results_panel(ui),
                 PaneType::Scan => self.render_scanner_panel(ui),
+                PaneType::Cheats => self.render_cheats_panel(ui),
             });
 
         egui_tiles::UiResponse::None
@@ -67,6 +158,43 @@ enum PaneType {
     Attach,
     Results,
     Scan,
+    Cheats,
+}
+
+enum CheatType {
+    Simple { addr: u64, mem_type: MemType },
+}
+
+trait CheatSummary {
+    fn get_summary(&self) -> String;
+}
+
+impl CheatSummary for CheatType {
+    fn get_summary(&self) -> String {
+        match self {
+            CheatType::Simple { addr, mem_type } => format!("[{}] 0x{:016x}", mem_type, addr),
+        }
+    }
+}
+
+impl std::fmt::Display for CheatType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CheatType::Simple { addr, mem_type } => write!(f, "Simple ({})", mem_type),
+        }
+    }
+}
+
+struct Cheat {
+    enabled: bool,
+    name: String,
+    cheat_type: CheatType,
+}
+
+impl CheatSummary for Cheat {
+    fn get_summary(&self) -> String {
+        self.cheat_type.get_summary()
+    }
 }
 
 struct Pane {
@@ -83,36 +211,7 @@ impl Pane {
             PaneType::Attach => "Attach",
             PaneType::Results => "Scan Results",
             PaneType::Scan => "Scanner",
-        }
-    }
-}
-
-enum ScanResult {
-    U8(u8),
-    U16(u16),
-    U32(u32),
-    U64(u64),
-    I8(i8),
-    I16(i16),
-    I32(i32),
-    I64(i64),
-    F32(f32),
-    F64(f64),
-}
-
-impl std::fmt::Display for ScanResult {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ScanResult::U8(x) => write!(f, "{}", x),
-            ScanResult::U16(x) => write!(f, "{}", x),
-            ScanResult::U32(x) => write!(f, "{}", x),
-            ScanResult::U64(x) => write!(f, "{}", x),
-            ScanResult::I8(x) => write!(f, "{}", x),
-            ScanResult::I16(x) => write!(f, "{}", x),
-            ScanResult::I32(x) => write!(f, "{}", x),
-            ScanResult::I64(x) => write!(f, "{}", x),
-            ScanResult::F32(x) => write!(f, "{}", x),
-            ScanResult::F64(x) => write!(f, "{}", x),
+            PaneType::Cheats => "Cheats",
         }
     }
 }
@@ -122,99 +221,152 @@ impl TreeBehaviour {
         &self,
         start_index: usize,
         end_index: usize,
-    ) -> Vec<Option<(u64, ScanResult)>> {
-        let mut final_results: Vec<Option<(u64, ScanResult)>> = vec![];
+    ) -> Vec<Option<(u64, MemValue)>> {
+        let mut final_results: Vec<Option<(u64, MemValue)>> = vec![];
         if let Some(ref scanner) = self.scanner {
             match self.scan_options.value_type {
-                ValueType::U8 => {
+                MemType::U8 => {
                     let results = scanner.get_results_range::<u8>(start_index, end_index);
                     final_results.extend(
                         results
                             .iter()
-                            .map(|(addr, val)| Some((*addr, ScanResult::U8(*val)))),
+                            .map(|(addr, val)| Some((*addr, MemValue::U8(*val)))),
                     );
                 }
-                ValueType::U16 => {
+                MemType::U16 => {
                     let results = scanner.get_results_range::<u16>(start_index, end_index);
                     final_results.extend(
                         results
                             .iter()
-                            .map(|(addr, val)| Some((*addr, ScanResult::U16(*val)))),
+                            .map(|(addr, val)| Some((*addr, MemValue::U16(*val)))),
                     );
                 }
-                ValueType::U32 => {
+                MemType::U32 => {
                     let results = scanner.get_results_range::<u32>(start_index, end_index);
                     final_results.extend(
                         results
                             .iter()
-                            .map(|(addr, val)| Some((*addr, ScanResult::U32(*val)))),
+                            .map(|(addr, val)| Some((*addr, MemValue::U32(*val)))),
                     );
                 }
-                ValueType::U64 => {
+                MemType::U64 => {
                     let results = scanner.get_results_range::<u64>(start_index, end_index);
                     final_results.extend(
                         results
                             .iter()
-                            .map(|(addr, val)| Some((*addr, ScanResult::U64(*val)))),
+                            .map(|(addr, val)| Some((*addr, MemValue::U64(*val)))),
                     );
                 }
-                ValueType::I8 => {
+                MemType::I8 => {
                     let results = scanner.get_results_range::<i8>(start_index, end_index);
                     final_results.extend(
                         results
                             .iter()
-                            .map(|(addr, val)| Some((*addr, ScanResult::I8(*val)))),
+                            .map(|(addr, val)| Some((*addr, MemValue::I8(*val)))),
                     );
                 }
-                ValueType::I16 => {
+                MemType::I16 => {
                     let results = scanner.get_results_range::<i16>(start_index, end_index);
                     final_results.extend(
                         results
                             .iter()
-                            .map(|(addr, val)| Some((*addr, ScanResult::I16(*val)))),
+                            .map(|(addr, val)| Some((*addr, MemValue::I16(*val)))),
                     );
                 }
-                ValueType::I32 => {
+                MemType::I32 => {
                     let results = scanner.get_results_range::<i32>(start_index, end_index);
                     final_results.extend(
                         results
                             .iter()
-                            .map(|(addr, val)| Some((*addr, ScanResult::I32(*val)))),
+                            .map(|(addr, val)| Some((*addr, MemValue::I32(*val)))),
                     );
                 }
-                ValueType::I64 => {
+                MemType::I64 => {
                     let results = scanner.get_results_range::<i64>(start_index, end_index);
                     final_results.extend(
                         results
                             .iter()
-                            .map(|(addr, val)| Some((*addr, ScanResult::I64(*val)))),
+                            .map(|(addr, val)| Some((*addr, MemValue::I64(*val)))),
                     );
                 }
-                ValueType::F32 => {
+                MemType::F32 => {
                     let results = scanner.get_results_range::<f32>(start_index, end_index);
                     final_results.extend(
                         results
                             .iter()
-                            .map(|(addr, val)| Some((*addr, ScanResult::F32(*val)))),
+                            .map(|(addr, val)| Some((*addr, MemValue::F32(*val)))),
                     );
                 }
-                ValueType::F64 => {
+                MemType::F64 => {
                     let results = scanner.get_results_range::<f64>(start_index, end_index);
                     final_results.extend(
                         results
                             .iter()
-                            .map(|(addr, val)| Some((*addr, ScanResult::F64(*val)))),
+                            .map(|(addr, val)| Some((*addr, MemValue::F64(*val)))),
                     );
                 }
+                MemType::Unknown => panic!("Cannot read values of type Unknown"),
             };
         };
 
         final_results
     }
 
+    fn render_cheats_panel(&mut self, ui: &mut egui::Ui) {
+        ui.vertical_centered_justified(|ui| {
+            ui.heading("Cheats");
+            ui.push_id("CheatsUI", |ui| {
+                egui_extras::TableBuilder::new(ui)
+                    .striped(true)
+                    .columns(Column::remainder().at_least(200.0), 4)
+                    .sense(egui::Sense {
+                        click: true,
+                        drag: false,
+                        focusable: true,
+                    })
+                    .auto_shrink(false)
+                    .min_scrolled_height(20.0)
+                    .header(20.0, |mut header_row| {
+                        header_row.col(|ui| {
+                            ui.heading("Enabled");
+                        });
+                        header_row.col(|ui| {
+                            ui.heading("Cheat");
+                        });
+                        header_row.col(|ui| {
+                            ui.heading("Type");
+                        });
+                        header_row.col(|ui| {
+                            ui.heading("Info");
+                        });
+                    })
+                    .body(|tbody| {
+                        tbody.rows(20.0, self.cheats.len(), |mut row| {
+                            let row_index = row.index();
+                            let cheat = self.cheats[row_index].borrow_mut();
+                            row.col(|ui| {
+                                ui.checkbox(&mut cheat.enabled, "");
+                            });
+                            row.col(|ui| {
+                                ui.label(&cheat.name);
+                            });
+                            row.col(|ui| {
+                                ui.label(format!("{}", cheat.cheat_type));
+                            });
+                            row.col(|ui| {
+                                ui.label(cheat.get_summary());
+                            });
+
+                            if row.response().double_clicked() {}
+                        });
+                    });
+            });
+        });
+    }
+
     fn render_attach_panel(&mut self, ui: &mut egui::Ui) {
         ui.vertical_centered_justified(|ui| {
-            ui.label("Attach to process");
+            ui.heading("Attach to process");
             ui.columns(2, |cols| {
                 cols[0].radio_value(&mut self.attach_type, AttachType::ByPID, "By PID");
                 cols[1].text_edit_singleline(&mut self.process_id);
@@ -291,66 +443,68 @@ impl TreeBehaviour {
 
     fn render_scanner_panel(&mut self, ui: &mut egui::Ui) {
         ui.add_enabled_ui(self.attached, |ui| {
-            ui.label("Memory Scanning");
+            ui.heading("Memory Scanning");
             ui.horizontal_top(|ui| {
                 ui.checkbox(&mut self.scan_options.is_hex, "Hex");
                 ui.text_edit_singleline(&mut self.scan_options.scan_input);
                 if ui.button("Scan").clicked() {
                     if let Some(scanner) = self.scanner.borrow_mut() {
                         match self.scan_options.value_type {
-                            ValueType::U8 => {
+                            MemType::U8 => {
                                 do_scan::<u8>(scanner, &self.scan_options, &mut self.scan_results)
                             }
-                            ValueType::U16 => {
+                            MemType::U16 => {
                                 do_scan::<u16>(scanner, &self.scan_options, &mut self.scan_results)
                             }
-                            ValueType::U32 => {
+                            MemType::U32 => {
                                 do_scan::<u32>(scanner, &self.scan_options, &mut self.scan_results)
                             }
-                            ValueType::U64 => {
+                            MemType::U64 => {
                                 do_scan::<u64>(scanner, &self.scan_options, &mut self.scan_results)
                             }
-                            ValueType::I8 => {
+                            MemType::I8 => {
                                 do_scan::<i8>(scanner, &self.scan_options, &mut self.scan_results)
                             }
-                            ValueType::I16 => {
+                            MemType::I16 => {
                                 do_scan::<i16>(scanner, &self.scan_options, &mut self.scan_results)
                             }
-                            ValueType::I32 => {
+                            MemType::I32 => {
                                 do_scan::<i32>(scanner, &self.scan_options, &mut self.scan_results)
                             }
-                            ValueType::I64 => {
+                            MemType::I64 => {
                                 do_scan::<i64>(scanner, &self.scan_options, &mut self.scan_results)
                             }
-                            ValueType::F32 => {
+                            MemType::F32 => {
                                 do_scan::<f32>(scanner, &self.scan_options, &mut self.scan_results)
                             }
-                            ValueType::F64 => {
+                            MemType::F64 => {
                                 do_scan::<f64>(scanner, &self.scan_options, &mut self.scan_results)
                             }
+                            MemType::Unknown => panic!("Cannot scan for values of unknown type"),
                         }
                     }
                 }
                 if ui.button("New Scan").clicked() {
                     if let Some(scanner) = self.scanner.borrow_mut() {
                         match self.scan_options.value_type {
-                            ValueType::U8 => scanner.new_scan(),
-                            ValueType::U16 => scanner.new_scan(),
-                            ValueType::U32 => scanner.new_scan(),
-                            ValueType::U64 => scanner.new_scan(),
-                            ValueType::I8 => scanner.new_scan(),
-                            ValueType::I16 => scanner.new_scan(),
-                            ValueType::I32 => scanner.new_scan(),
-                            ValueType::I64 => scanner.new_scan(),
-                            ValueType::F32 => scanner.new_scan(),
-                            ValueType::F64 => scanner.new_scan(),
+                            MemType::U8 => scanner.new_scan(),
+                            MemType::U16 => scanner.new_scan(),
+                            MemType::U32 => scanner.new_scan(),
+                            MemType::U64 => scanner.new_scan(),
+                            MemType::I8 => scanner.new_scan(),
+                            MemType::I16 => scanner.new_scan(),
+                            MemType::I32 => scanner.new_scan(),
+                            MemType::I64 => scanner.new_scan(),
+                            MemType::F32 => scanner.new_scan(),
+                            MemType::F64 => scanner.new_scan(),
+                            MemType::Unknown => panic!("Cannot scan for values of unknown type"),
                         };
                     }
                     self.scan_results.visible_results.clear();
                     self.scan_results.num_results = "No results yet".into();
                 }
             });
-            ui.label("Scan Options");
+            ui.heading("Scan Options");
             ui.vertical_centered(|ui| {
                 ui.columns(2, |cols| {
                     cols[0].label("Scan Type");
@@ -386,53 +540,53 @@ impl TreeBehaviour {
                         .show_ui(&mut cols[1], |ui| {
                             ui.selectable_value(
                                 &mut self.scan_options.value_type,
-                                ValueType::U8,
-                                format!("{}", ValueType::U8),
+                                MemType::U8,
+                                format!("{}", MemType::U8),
                             );
                             ui.selectable_value(
                                 &mut self.scan_options.value_type,
-                                ValueType::U16,
-                                format!("{}", ValueType::U16),
+                                MemType::U16,
+                                format!("{}", MemType::U16),
                             );
                             ui.selectable_value(
                                 &mut self.scan_options.value_type,
-                                ValueType::U32,
-                                format!("{}", ValueType::U32),
+                                MemType::U32,
+                                format!("{}", MemType::U32),
                             );
                             ui.selectable_value(
                                 &mut self.scan_options.value_type,
-                                ValueType::U64,
-                                format!("{}", ValueType::U64),
+                                MemType::U64,
+                                format!("{}", MemType::U64),
                             );
                             ui.selectable_value(
                                 &mut self.scan_options.value_type,
-                                ValueType::I8,
-                                format!("{}", ValueType::I8),
+                                MemType::I8,
+                                format!("{}", MemType::I8),
                             );
                             ui.selectable_value(
                                 &mut self.scan_options.value_type,
-                                ValueType::I16,
-                                format!("{}", ValueType::I16),
+                                MemType::I16,
+                                format!("{}", MemType::I16),
                             );
                             ui.selectable_value(
                                 &mut self.scan_options.value_type,
-                                ValueType::I32,
-                                format!("{}", ValueType::I32),
+                                MemType::I32,
+                                format!("{}", MemType::I32),
                             );
                             ui.selectable_value(
                                 &mut self.scan_options.value_type,
-                                ValueType::I64,
-                                format!("{}", ValueType::I64),
+                                MemType::I64,
+                                format!("{}", MemType::I64),
                             );
                             ui.selectable_value(
                                 &mut self.scan_options.value_type,
-                                ValueType::F32,
-                                format!("{}", ValueType::F32),
+                                MemType::F32,
+                                format!("{}", MemType::F32),
                             );
                             ui.selectable_value(
                                 &mut self.scan_options.value_type,
-                                ValueType::F64,
-                                format!("{}", ValueType::F64),
+                                MemType::F64,
+                                format!("{}", MemType::F64),
                             );
                         });
                 });
@@ -442,90 +596,33 @@ impl TreeBehaviour {
 
     fn render_results_panel(&mut self, ui: &mut egui::Ui) {
         ui.vertical_centered_justified(|ui| {
+            ui.heading("Scan Results");
             if self.scan_results.scan_status.text().len() > 0 {
                 ui.label(self.scan_results.scan_status.clone());
             }
             ui.label(&self.scan_results.num_results);
         });
 
-        // let num_results = if let Some(ref scanner) = self.scanner {
-        //     scanner.count_results()
-        // } else {
-        //     None
-        // };
-
-        // if let Some(num_results) = num_results {
-        //     if num_results <= 10000 {
-        //         egui_extras::TableBuilder::new(ui)
-        //             .striped(true)
-        //             .columns(Column::remainder().at_least(200.0), 2)
-        //             .auto_shrink(false)
-        //             .min_scrolled_height(20.0)
-        //             .header(20.0, |mut header_row| {
-        //                 header_row.col(|ui| {
-        //                     ui.heading("Address");
-        //                 });
-        //                 header_row.col(|ui| {
-        //                     ui.heading("Value");
-        //                 });
-        //             })
-        //             .body(|mut tbody| {
-        //                 if let Some(ref scanner) = self.scanner {
-        //                     let num_results = scanner.count_results().unwrap_or(0);
-
-        //                     // This will lag behind by a single frame, but it's probably fine
-        //                     let results = self
-        //                         .get_results_range(self.min_results_index, self.max_results_index);
-        //                     let mut results = results.iter();
-        //                     let mut this_min_index: usize = usize::max_value();
-        //                     let mut this_max_index: usize = usize::min_value();
-
-        //                     tbody.rows(20.0, num_results, |mut row| {
-        //                         let row_index = row.index();
-        //                         if row_index < this_min_index {
-        //                             this_min_index = row_index;
-        //                         }
-        //                         if row_index > this_max_index {
-        //                             this_max_index = row_index;
-        //                         }
-        //                         if let Some(Some((addr, val))) = results.next() {
-        //                             row.col(|ui| {
-        //                                 ui.label(format!("0x{:016x}", addr));
-        //                             });
-        //                             row.col(|ui| {
-        //                                 ui.label(format!("{}", val));
-        //                             });
-        //                         } else {
-        //                             row.col(|ui| {
-        //                                 ui.label("null");
-        //                             });
-        //                             row.col(|ui| {
-        //                                 ui.label("null");
-        //                             });
-        //                         }
-        //                     });
-        //                     self.min_results_index = this_min_index;
-        //                     self.max_results_index = this_max_index;
-        //                 }
-        //             });
-        //     }
-        // }
-
-        egui_extras::TableBuilder::new(ui)
-            .striped(true)
-            .columns(Column::remainder().at_least(200.0), 2)
-            .auto_shrink(false)
-            .min_scrolled_height(20.0)
-            .header(20.0, |mut header_row| {
-                header_row.col(|ui| {
-                    ui.heading("Address");
-                });
-                header_row.col(|ui| {
-                    ui.heading("Value");
-                });
-            })
-            .body(|mut tbody| {
-                if let Some(ref scanner) = self.scanner {
+        ui.push_id("ResultsUI", |ui| {
+            egui_extras::TableBuilder::new(ui)
+                .striped(true)
+                .columns(Column::remainder().at_least(200.0), 2)
+                .sense(egui::Sense {
+                    click: true,
+                    drag: false,
+                    focusable: true,
+                })
+                .auto_shrink(false)
+                .min_scrolled_height(20.0)
+                .header(20.0, |mut header_row| {
+                    header_row.col(|ui| {
+                        ui.heading("Address");
+                    });
+                    header_row.col(|ui| {
+                        ui.heading("Value");
+                    });
+                })
+                .body(|tbody| {
                     tbody.rows(20.0, self.scan_results.visible_results.len(), |mut row| {
                         let row_index = row.index();
                         if let Some((addr, val)) = self.scan_results.visible_results.get(row_index)
@@ -536,6 +633,16 @@ impl TreeBehaviour {
                             row.col(|ui| {
                                 ui.label(format!("{}", val));
                             });
+                            if row.response().double_clicked() {
+                                self.cheats.push(Cheat {
+                                    enabled: false,
+                                    name: "New Cheat".into(),
+                                    cheat_type: CheatType::Simple {
+                                        addr: *addr,
+                                        mem_type: self.scan_options.value_type,
+                                    },
+                                })
+                            }
                         } else {
                             row.col(|ui| {
                                 ui.label("null");
@@ -545,8 +652,8 @@ impl TreeBehaviour {
                             });
                         }
                     });
-                }
-            });
+                });
+        });
 
         ui.add_space(20.0);
     }
@@ -576,26 +683,12 @@ impl std::fmt::Display for ScanType {
     }
 }
 
-#[derive(Default, PartialEq)]
-enum ValueType {
-    #[default]
-    U8,
-    U16,
-    U32,
-    U64,
-    I8,
-    I16,
-    I32,
-    I64,
-    F32,
-    F64,
-}
-
 fn create_tree() -> Tree<Pane> {
     let mut tiles = Tiles::default();
     let attach_pane = tiles.insert_pane(Pane::from_type(PaneType::Attach));
     let scan_pane = tiles.insert_pane(Pane::from_type(PaneType::Scan));
     let results_pane = tiles.insert_pane(Pane::from_type(PaneType::Results));
+    let cheats_pane = tiles.insert_pane(Pane::from_type(PaneType::Cheats));
 
     let layout_left = Linear {
         children: vec![attach_pane, results_pane],
@@ -606,9 +699,19 @@ fn create_tree() -> Tree<Pane> {
         layout_left,
     )));
 
-    let layout = Linear {
+    let layout_top = Linear {
         children: vec![left, scan_pane],
         dir: egui_tiles::LinearDir::Horizontal,
+        ..Default::default()
+    };
+
+    let top = tiles.insert_new(egui_tiles::Tile::Container(egui_tiles::Container::Linear(
+        layout_top,
+    )));
+
+    let layout = Linear {
+        children: vec![top, cheats_pane],
+        dir: egui_tiles::LinearDir::Vertical,
         ..Default::default()
     };
 
@@ -616,37 +719,16 @@ fn create_tree() -> Tree<Pane> {
     Tree::new("root", root, tiles)
 }
 
-impl std::fmt::Display for ValueType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                ValueType::U8 => "8-bit Integer (unsigned)",
-                ValueType::U16 => "16-bit Integer (unsigned)",
-                ValueType::U32 => "32-bit Integer (unsigned)",
-                ValueType::U64 => "64-bit Integer (unsigned)",
-                ValueType::I8 => "8-bit Integer (signed)",
-                ValueType::I16 => "16-bit Integer (signed)",
-                ValueType::I32 => "32-bit Integer (signed)",
-                ValueType::I64 => "64-bit Integer (signed)",
-                ValueType::F32 => "Float (32-bit)",
-                ValueType::F64 => "Float (64-bit)",
-            }
-        )
-    }
-}
-
 #[derive(Default)]
 struct ScanOptions {
-    value_type: ValueType,
+    value_type: MemType,
     scan_type: ScanType,
     is_hex: bool,
     scan_input: String,
 }
 
 #[derive(Default)]
-struct ScanResults {
+struct MemValues {
     scan_status: egui::RichText,
     num_results: String,
     visible_results: Vec<(u64, String)>,
@@ -668,6 +750,7 @@ impl Default for MemNinja {
                 scan_results: Default::default(),
                 min_results_index: 0,
                 max_results_index: 0,
+                cheats: vec![],
             },
         }
     }
@@ -683,7 +766,7 @@ enum AttachType {
 fn do_scan<T>(
     scanner: &mut hoodmem::scanner::Scanner,
     scan_options: &ScanOptions,
-    scan_results: &mut ScanResults,
+    scan_results: &mut MemValues,
 ) where
     T: Copy
         + std::fmt::Debug

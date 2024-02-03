@@ -11,3 +11,4 @@ egui = "0.25.0"
 eframe = "0.25.0"
 egui_tiles = "0.6.0"
 hoodmem = { path = "../hoodmem" }
+egui_extras = "0.25.0"

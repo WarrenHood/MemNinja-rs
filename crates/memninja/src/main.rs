@@ -1,10 +1,12 @@
 use std::borrow::BorrowMut;
+use std::fmt::Pointer;
 use std::str::FromStr;
 
 use eframe::egui::{Color32, Margin, Ui};
 use eframe::run_native;
 use eframe::App;
 use egui::{Vec2, WidgetText};
+use egui_extras::Column;
 use egui_tiles::{Behavior, Linear, Tile, TileId, Tiles, Tree};
 use hoodmem::scanner::ScanFilter;
 use hoodmem::Process;
@@ -24,6 +26,8 @@ struct TreeBehaviour {
     attached_status: egui::RichText,
     scan_options: ScanOptions,
     scan_results: ScanResults,
+    min_results_index: usize,
+    max_results_index: usize,
 }
 
 impl Behavior<Pane> for TreeBehaviour {
@@ -83,7 +87,131 @@ impl Pane {
     }
 }
 
+enum ScanResult {
+    U8(u8),
+    U16(u16),
+    U32(u32),
+    U64(u64),
+    I8(i8),
+    I16(i16),
+    I32(i32),
+    I64(i64),
+    F32(f32),
+    F64(f64),
+}
+
+impl std::fmt::Display for ScanResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ScanResult::U8(x) => write!(f, "{}", x),
+            ScanResult::U16(x) => write!(f, "{}", x),
+            ScanResult::U32(x) => write!(f, "{}", x),
+            ScanResult::U64(x) => write!(f, "{}", x),
+            ScanResult::I8(x) => write!(f, "{}", x),
+            ScanResult::I16(x) => write!(f, "{}", x),
+            ScanResult::I32(x) => write!(f, "{}", x),
+            ScanResult::I64(x) => write!(f, "{}", x),
+            ScanResult::F32(x) => write!(f, "{}", x),
+            ScanResult::F64(x) => write!(f, "{}", x),
+        }
+    }
+}
+
 impl TreeBehaviour {
+    fn get_results_range(
+        &self,
+        start_index: usize,
+        end_index: usize,
+    ) -> Vec<Option<(u64, ScanResult)>> {
+        let mut final_results: Vec<Option<(u64, ScanResult)>> = vec![];
+        if let Some(ref scanner) = self.scanner {
+            match self.scan_options.value_type {
+                ValueType::U8 => {
+                    let results = scanner.get_results_range::<u8>(start_index, end_index);
+                    final_results.extend(
+                        results
+                            .iter()
+                            .map(|(addr, val)| Some((*addr, ScanResult::U8(*val)))),
+                    );
+                }
+                ValueType::U16 => {
+                    let results = scanner.get_results_range::<u16>(start_index, end_index);
+                    final_results.extend(
+                        results
+                            .iter()
+                            .map(|(addr, val)| Some((*addr, ScanResult::U16(*val)))),
+                    );
+                }
+                ValueType::U32 => {
+                    let results = scanner.get_results_range::<u32>(start_index, end_index);
+                    final_results.extend(
+                        results
+                            .iter()
+                            .map(|(addr, val)| Some((*addr, ScanResult::U32(*val)))),
+                    );
+                }
+                ValueType::U64 => {
+                    let results = scanner.get_results_range::<u64>(start_index, end_index);
+                    final_results.extend(
+                        results
+                            .iter()
+                            .map(|(addr, val)| Some((*addr, ScanResult::U64(*val)))),
+                    );
+                }
+                ValueType::I8 => {
+                    let results = scanner.get_results_range::<i8>(start_index, end_index);
+                    final_results.extend(
+                        results
+                            .iter()
+                            .map(|(addr, val)| Some((*addr, ScanResult::I8(*val)))),
+                    );
+                }
+                ValueType::I16 => {
+                    let results = scanner.get_results_range::<i16>(start_index, end_index);
+                    final_results.extend(
+                        results
+                            .iter()
+                            .map(|(addr, val)| Some((*addr, ScanResult::I16(*val)))),
+                    );
+                }
+                ValueType::I32 => {
+                    let results = scanner.get_results_range::<i32>(start_index, end_index);
+                    final_results.extend(
+                        results
+                            .iter()
+                            .map(|(addr, val)| Some((*addr, ScanResult::I32(*val)))),
+                    );
+                }
+                ValueType::I64 => {
+                    let results = scanner.get_results_range::<i64>(start_index, end_index);
+                    final_results.extend(
+                        results
+                            .iter()
+                            .map(|(addr, val)| Some((*addr, ScanResult::I64(*val)))),
+                    );
+                }
+                ValueType::F32 => {
+                    let results = scanner.get_results_range::<f32>(start_index, end_index);
+                    final_results.extend(
+                        results
+                            .iter()
+                            .map(|(addr, val)| Some((*addr, ScanResult::F32(*val)))),
+                    );
+                }
+                ValueType::F64 => {
+                    let results = scanner.get_results_range::<f64>(start_index, end_index);
+                    final_results.extend(
+                        results
+                            .iter()
+                            .map(|(addr, val)| Some((*addr, ScanResult::F64(*val)))),
+                    );
+                }
+            };
+        };
+
+        final_results
+    }
+
     fn render_attach_panel(&mut self, ui: &mut egui::Ui) {
         ui.vertical_centered_justified(|ui| {
             ui.label("Attach to process");
@@ -318,17 +446,109 @@ impl TreeBehaviour {
                 ui.label(self.scan_results.scan_status.clone());
             }
             ui.label(&self.scan_results.num_results);
-            ui.columns(3, |cols| {
-                cols[0].label("Address");
-                cols[1].label("Value");
-                for (addr, val) in self.scan_results.visible_results.iter() {
-                    cols[0].separator();
-                    cols[1].separator();
-                    cols[0].label(format!("0x{:016x}", addr));
-                    cols[1].label(val);
+        });
+
+        // let num_results = if let Some(ref scanner) = self.scanner {
+        //     scanner.count_results()
+        // } else {
+        //     None
+        // };
+
+        // if let Some(num_results) = num_results {
+        //     if num_results <= 10000 {
+        //         egui_extras::TableBuilder::new(ui)
+        //             .striped(true)
+        //             .columns(Column::remainder().at_least(200.0), 2)
+        //             .auto_shrink(false)
+        //             .min_scrolled_height(20.0)
+        //             .header(20.0, |mut header_row| {
+        //                 header_row.col(|ui| {
+        //                     ui.heading("Address");
+        //                 });
+        //                 header_row.col(|ui| {
+        //                     ui.heading("Value");
+        //                 });
+        //             })
+        //             .body(|mut tbody| {
+        //                 if let Some(ref scanner) = self.scanner {
+        //                     let num_results = scanner.count_results().unwrap_or(0);
+
+        //                     // This will lag behind by a single frame, but it's probably fine
+        //                     let results = self
+        //                         .get_results_range(self.min_results_index, self.max_results_index);
+        //                     let mut results = results.iter();
+        //                     let mut this_min_index: usize = usize::max_value();
+        //                     let mut this_max_index: usize = usize::min_value();
+
+        //                     tbody.rows(20.0, num_results, |mut row| {
+        //                         let row_index = row.index();
+        //                         if row_index < this_min_index {
+        //                             this_min_index = row_index;
+        //                         }
+        //                         if row_index > this_max_index {
+        //                             this_max_index = row_index;
+        //                         }
+        //                         if let Some(Some((addr, val))) = results.next() {
+        //                             row.col(|ui| {
+        //                                 ui.label(format!("0x{:016x}", addr));
+        //                             });
+        //                             row.col(|ui| {
+        //                                 ui.label(format!("{}", val));
+        //                             });
+        //                         } else {
+        //                             row.col(|ui| {
+        //                                 ui.label("null");
+        //                             });
+        //                             row.col(|ui| {
+        //                                 ui.label("null");
+        //                             });
+        //                         }
+        //                     });
+        //                     self.min_results_index = this_min_index;
+        //                     self.max_results_index = this_max_index;
+        //                 }
+        //             });
+        //     }
+        // }
+
+        egui_extras::TableBuilder::new(ui)
+            .striped(true)
+            .columns(Column::remainder().at_least(200.0), 2)
+            .auto_shrink(false)
+            .min_scrolled_height(20.0)
+            .header(20.0, |mut header_row| {
+                header_row.col(|ui| {
+                    ui.heading("Address");
+                });
+                header_row.col(|ui| {
+                    ui.heading("Value");
+                });
+            })
+            .body(|mut tbody| {
+                if let Some(ref scanner) = self.scanner {
+                    tbody.rows(20.0, self.scan_results.visible_results.len(), |mut row| {
+                        let row_index = row.index();
+                        if let Some((addr, val)) = self.scan_results.visible_results.get(row_index)
+                        {
+                            row.col(|ui| {
+                                ui.label(format!("0x{:016x}", addr));
+                            });
+                            row.col(|ui| {
+                                ui.label(format!("{}", val));
+                            });
+                        } else {
+                            row.col(|ui| {
+                                ui.label("null");
+                            });
+                            row.col(|ui| {
+                                ui.label("null");
+                            });
+                        }
+                    });
                 }
             });
-        });
+
+        ui.add_space(20.0);
     }
 }
 
@@ -446,6 +666,8 @@ impl Default for MemNinja {
                 attached_status: Default::default(),
                 scan_options: Default::default(),
                 scan_results: Default::default(),
+                min_results_index: 0,
+                max_results_index: 0,
             },
         }
     }
@@ -557,7 +779,10 @@ fn main() -> eframe::Result<()> {
     let native_options = eframe::NativeOptions {
         hardware_acceleration: eframe::HardwareAcceleration::Preferred,
         viewport: egui::ViewportBuilder {
-            min_inner_size: Some(Vec2 { x: 1280.0, y: 600.0 }),
+            min_inner_size: Some(Vec2 {
+                x: 1280.0,
+                y: 600.0,
+            }),
             ..Default::default()
         },
         ..Default::default()

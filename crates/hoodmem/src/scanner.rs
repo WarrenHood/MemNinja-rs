@@ -317,6 +317,37 @@ impl Scanner {
             .collect()
     }
 
+    /// Gets the result at a given index
+    /// Warning: This is bad for performance, prefer getting a range of results
+    pub fn get_nth_result<T>(&self, n: usize) -> Option<(u64, T)>
+    where
+        T: Copy + Send + Sync,
+    {
+        self.results
+            .values()
+            .into_iter()
+            .map(|results| results.get_results::<T>())
+            .filter(|results| results.is_some())
+            .flat_map(|results| results.unwrap())
+            .nth(n)
+    }
+
+    /// Gets a range of results
+    pub fn get_results_range<T>(&self, start_index: usize, end_index: usize) -> Vec<(u64, T)>
+    where
+        T: Copy + Send + Sync,
+    {
+        self.results
+            .values()
+            .into_iter()
+            .map(|results| results.get_results::<T>())
+            .filter(|results| results.is_some())
+            .flat_map(|results| results.unwrap())
+            .skip(start_index)
+            .take(end_index - start_index + 1)
+            .collect()
+    }
+
     /// Clears all results and initializes the scanner for the first scan
     pub fn new_scan(&mut self) {
         self.results.clear();

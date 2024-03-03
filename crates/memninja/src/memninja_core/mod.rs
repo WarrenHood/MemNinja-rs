@@ -90,6 +90,10 @@ impl CoreController {
                                     core.detach();
                                     Ok(())
                                 },
+                                CoreCommand::Stop => {
+                                    println!("MemNinja Core stopped");
+                                    break;
+                                }
                                 _ => {
                                     Err(anyhow::anyhow!("Unimplemented core command: {:?}", cmd))
                                 }

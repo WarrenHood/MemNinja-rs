@@ -55,5 +55,5 @@ pub fn attach_external_by_name(name: &str) -> Result<Box<dyn Process>> {
     return Ok(Box::new(LinuxProcess::attach_by_proc_name(name)))
 }
 
-pub trait Process: MemoryRead + ScannableMemoryRegions + 'static {}
-impl<T: MemoryRead + ScannableMemoryRegions + 'static> Process for T {}
+pub trait Process: MemoryRead + ScannableMemoryRegions + 'static + Send + Sync {}
+impl<T: MemoryRead + ScannableMemoryRegions + 'static + Send + Sync> Process for T {}

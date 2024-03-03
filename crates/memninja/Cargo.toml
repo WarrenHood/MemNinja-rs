@@ -12,3 +12,5 @@ eframe = "0.25.0"
 egui_tiles = "0.6.0"
 hoodmem = { path = "../hoodmem" }
 egui_extras = "0.25.0"
+crossbeam = "0.8.4"
+crossbeam-channel = "0.5.12"

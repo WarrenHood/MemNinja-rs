@@ -1,3 +1,5 @@
+mod memninja_core;
+
 use std::borrow::BorrowMut;
 use std::fmt::Pointer;
 use std::str::FromStr;

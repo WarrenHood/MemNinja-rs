@@ -4,6 +4,7 @@ pub mod util;
 
 pub use anyhow::Result;
 pub use std::ffi::{c_void, CString};
+use std::sync::Arc;
 
 #[cfg(target_os = "windows")]
 pub use crate::platforms::windows::*;
@@ -40,19 +41,19 @@ pub trait ScannableMemoryRegions {
     fn get_writable_regions(&self) -> Vec<MemoryRegion>;
 }
 
-pub fn attach_external(pid: u32) -> Result<Box<dyn Process>> {
+pub fn attach_external(pid: u32) -> Result<Arc<dyn Process>> {
     #[cfg(target_os = "windows")]
-    return Ok(Box::new(WinProcess::attach(pid)?));
+    return Ok(Arc::new(WinProcess::attach(pid)?));
 
     #[cfg(target_os = "linux")]
-    return Ok(Box::new(LinuxProcess::attach(pid)))
+    return Ok(Arc::new(LinuxProcess::attach(pid)))
 }
 
-pub fn attach_external_by_name(name: &str) -> Result<Box<dyn Process>> {
+pub fn attach_external_by_name(name: &str) -> Result<Arc<dyn Process>> {
     #[cfg(target_os = "windows")]
-    return Ok(Box::new(WinProcess::attach_by_name(name)?));
+    return Ok(Arc::new(WinProcess::attach_by_name(name)?));
     #[cfg(target_os = "linux")]
-    return Ok(Box::new(LinuxProcess::attach_by_proc_name(name)))
+    return Ok(Arc::new(LinuxProcess::attach_by_proc_name(name)))
 }
 
 pub trait Process: MemoryRead + ScannableMemoryRegions + 'static + Send + Sync {}

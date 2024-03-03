@@ -3,6 +3,7 @@ use crate::*;
 use anyhow::Result;
 use rayon::prelude::*;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 /// Scan filter used when diffing memory and updating scan results
 #[derive(Clone, Copy, Debug)]
@@ -247,13 +248,13 @@ impl RegionResults {
 }
 
 pub struct Scanner {
-    process: Box<dyn Process>,
+    process: Arc<dyn Process>,
     pub results: HashMap<MemoryRegion, RegionResults>,
     is_new_scan: bool,
 }
 
 impl Scanner {
-    pub fn new(process: Box<dyn Process>) -> Self {
+    pub fn new(process: Arc<dyn Process>) -> Self {
         Self {
             process,
             results: HashMap::new(),

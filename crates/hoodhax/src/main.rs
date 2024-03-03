@@ -1,4 +1,4 @@
-use std::{str::FromStr, io::Write};
+use std::{io::Write, str::FromStr, sync::Arc};
 
 use hoodmem::{scanner::ScanFilter, Process};
 
@@ -116,7 +116,7 @@ where
 
 fn main() -> hoodmem::Result<()> {
     #[allow(unused_assignments)]
-    let mut process: Option<Box<dyn Process>> = None;
+    let mut process: Option<Arc<dyn Process>> = None;
     let mut scanner: Option<hoodmem::scanner::Scanner> = None;
     let mut scan_type: ScanType = ScanType::U32;
 

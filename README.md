@@ -1,6 +1,6 @@
-# HoodMem
+# MemNinja
 
-A WIP memory hacking crate.
+A WIP memory hacking crate written in Rust.
 
 ## Supported Platforms
 - Windows (Run as Administrator)

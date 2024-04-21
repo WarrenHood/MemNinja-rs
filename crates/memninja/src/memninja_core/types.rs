@@ -2,14 +2,14 @@
 pub enum AttachTarget {
     Process(u32),
     Window(String),
-    Other(String)
+    Other(String),
 }
 
 #[derive(Debug, Clone)]
 pub enum AttachStatus {
     Detached,
     Attached(AttachTarget),
-    Unknown
+    Unknown,
 }
 
 impl Default for AttachStatus {
@@ -18,6 +18,36 @@ impl Default for AttachStatus {
     }
 }
 
+
+#[derive(Debug, Default, Clone)]
+pub enum ScanStatus {
+    /// Ready to scan
+    #[default]
+    Ready,
+    /// A scan is currently in progress
+    Scanning,
+    /// Done scanning.
+    Done(u64),
+    /// Scan failed for some reason
+    Failed(String),
+    /// Unknown status
+    Unknown
+}
+
+
+impl std::fmt::Display for ScanStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ScanStatus::Ready => write!(f, "Ready to scan"),
+            ScanStatus::Scanning => write!(f, "Scanning..."),
+            ScanStatus::Done(num_results) => write!(f, "Scan complete ({} Results)", num_results),
+            ScanStatus::Failed(reason) => write!(f, "Scan Failed ({})", reason),
+            ScanStatus::Unknown => write!(f, ""),
+        }
+    }
+}
+
+
 #[derive(Debug, Default, PartialEq)]
 pub enum AttachType {
     #[default]
@@ -25,7 +55,7 @@ pub enum AttachType {
     ByWindowName,
 }
 
-#[derive(Default, PartialEq, Debug)]
+#[derive(Default, PartialEq, Debug, Clone, Copy)]
 pub enum ScanType {
     #[default]
     Exact,
@@ -95,6 +125,24 @@ pub enum MemType {
     F32,
     F64,
     Unknown,
+}
+
+impl MemType {
+    pub fn parse_value(&self, value: &str) -> anyhow::Result<MemValue> {
+        Ok(match self {
+            MemType::U8 => MemValue::U8(value.parse()?),
+            MemType::U16 => MemValue::U8(value.parse()?),
+            MemType::U32 => MemValue::U8(value.parse()?),
+            MemType::U64 => MemValue::U8(value.parse()?),
+            MemType::I8 => MemValue::U8(value.parse()?),
+            MemType::I16 => MemValue::U8(value.parse()?),
+            MemType::I32 => MemValue::U8(value.parse()?),
+            MemType::I64 => MemValue::U8(value.parse()?),
+            MemType::F32 => MemValue::U8(value.parse()?),
+            MemType::F64 => MemValue::U8(value.parse()?),
+            MemType::Unknown => anyhow::bail!("Cannot parse the unknown type"),
+        })
+    }
 }
 
 impl From<MemValue> for MemType {

@@ -14,6 +14,7 @@ use egui_tiles::{Behavior, Linear, Tile, TileId, Tiles, Tree};
 use hoodmem::scanner::ScanFilter;
 use hoodmem::Process;
 
+use memninja_core::utils::GenericScanFilter;
 use memninja_core::{types::*, CoreCommand, CoreController};
 
 struct MemNinja {
@@ -22,8 +23,6 @@ struct MemNinja {
 }
 
 struct TreeBehaviour {
-    // process: Option<Box<dyn Process>>,
-    // scanner: Option<hoodmem::scanner::Scanner>,
     core: Option<CoreController>,
     process_id: String,
     window_name: String,
@@ -97,102 +96,6 @@ impl Pane {
 }
 
 impl TreeBehaviour {
-    fn get_results_range(
-        &self,
-        start_index: usize,
-        end_index: usize,
-    ) -> Vec<Option<(u64, MemValue)>> {
-        let mut final_results: Vec<Option<(u64, MemValue)>> = vec![];
-        // TODO: Get results from CoreController
-        // if let Some(ref scanner) = self.scanner {
-        //     match self.scan_options.value_type {
-        //         MemType::U8 => {
-        //             let results = scanner.get_results_range::<u8>(start_index, end_index);
-        //             final_results.extend(
-        //                 results
-        //                     .iter()
-        //                     .map(|(addr, val)| Some((*addr, MemValue::U8(*val)))),
-        //             );
-        //         }
-        //         MemType::U16 => {
-        //             let results = scanner.get_results_range::<u16>(start_index, end_index);
-        //             final_results.extend(
-        //                 results
-        //                     .iter()
-        //                     .map(|(addr, val)| Some((*addr, MemValue::U16(*val)))),
-        //             );
-        //         }
-        //         MemType::U32 => {
-        //             let results = scanner.get_results_range::<u32>(start_index, end_index);
-        //             final_results.extend(
-        //                 results
-        //                     .iter()
-        //                     .map(|(addr, val)| Some((*addr, MemValue::U32(*val)))),
-        //             );
-        //         }
-        //         MemType::U64 => {
-        //             let results = scanner.get_results_range::<u64>(start_index, end_index);
-        //             final_results.extend(
-        //                 results
-        //                     .iter()
-        //                     .map(|(addr, val)| Some((*addr, MemValue::U64(*val)))),
-        //             );
-        //         }
-        //         MemType::I8 => {
-        //             let results = scanner.get_results_range::<i8>(start_index, end_index);
-        //             final_results.extend(
-        //                 results
-        //                     .iter()
-        //                     .map(|(addr, val)| Some((*addr, MemValue::I8(*val)))),
-        //             );
-        //         }
-        //         MemType::I16 => {
-        //             let results = scanner.get_results_range::<i16>(start_index, end_index);
-        //             final_results.extend(
-        //                 results
-        //                     .iter()
-        //                     .map(|(addr, val)| Some((*addr, MemValue::I16(*val)))),
-        //             );
-        //         }
-        //         MemType::I32 => {
-        //             let results = scanner.get_results_range::<i32>(start_index, end_index);
-        //             final_results.extend(
-        //                 results
-        //                     .iter()
-        //                     .map(|(addr, val)| Some((*addr, MemValue::I32(*val)))),
-        //             );
-        //         }
-        //         MemType::I64 => {
-        //             let results = scanner.get_results_range::<i64>(start_index, end_index);
-        //             final_results.extend(
-        //                 results
-        //                     .iter()
-        //                     .map(|(addr, val)| Some((*addr, MemValue::I64(*val)))),
-        //             );
-        //         }
-        //         MemType::F32 => {
-        //             let results = scanner.get_results_range::<f32>(start_index, end_index);
-        //             final_results.extend(
-        //                 results
-        //                     .iter()
-        //                     .map(|(addr, val)| Some((*addr, MemValue::F32(*val)))),
-        //             );
-        //         }
-        //         MemType::F64 => {
-        //             let results = scanner.get_results_range::<f64>(start_index, end_index);
-        //             final_results.extend(
-        //                 results
-        //                     .iter()
-        //                     .map(|(addr, val)| Some((*addr, MemValue::F64(*val)))),
-        //             );
-        //         }
-        //         MemType::Unknown => panic!("Cannot read values of type Unknown"),
-        //     };
-        // };
-
-        final_results
-    }
-
     fn render_cheats_panel(&mut self, ui: &mut egui::Ui) {
         ui.vertical_centered_justified(|ui| {
             ui.heading("Cheats");
@@ -271,7 +174,9 @@ impl TreeBehaviour {
                             AttachType::ByPID => {
                                 if let Ok(pid) = self.process_id.parse::<u32>() {
                                     if let Some(core) = self.core.as_ref() {
-                                        core.send_command(CoreCommand::Attach(AttachTarget::Process(pid)));
+                                        core.send_command(CoreCommand::Attach(
+                                            AttachTarget::Process(pid),
+                                        ));
                                     }
                                 } else {
                                     self.attached_status =
@@ -281,7 +186,9 @@ impl TreeBehaviour {
                             }
                             AttachType::ByWindowName => {
                                 if let Some(core) = self.core.as_ref() {
-                                    core.send_command(CoreCommand::Attach(AttachTarget::Window(self.window_name.clone())));
+                                    core.send_command(CoreCommand::Attach(AttachTarget::Window(
+                                        self.window_name.clone(),
+                                    )));
                                 }
                             }
                         };
@@ -297,9 +204,14 @@ impl TreeBehaviour {
 
                 if let Some(core) = self.core.as_ref() {
                     self.attached_status = match core.get_attach_status() {
-                        AttachStatus::Detached => egui::RichText::new("Detached").color(egui::Color32::RED),
-                        AttachStatus::Attached(_) => egui::RichText::new("Attached").color(egui::Color32::LIGHT_GREEN),
-                        AttachStatus::Unknown => egui::RichText::new("Unknown Attach Status").color(egui::Color32::LIGHT_RED),
+                        AttachStatus::Detached => {
+                            egui::RichText::new("Detached").color(egui::Color32::RED)
+                        }
+                        AttachStatus::Attached(_) => {
+                            egui::RichText::new("Attached").color(egui::Color32::LIGHT_GREEN)
+                        }
+                        AttachStatus::Unknown => egui::RichText::new("Unknown Attach Status")
+                            .color(egui::Color32::LIGHT_RED),
                     };
                 }
 
@@ -312,168 +224,155 @@ impl TreeBehaviour {
     }
 
     fn render_scanner_panel(&mut self, ui: &mut egui::Ui) {
-        ui.add_enabled_ui(self.core.as_ref().is_some_and(|core| core.check_attached()), |ui| {
-            ui.heading("Memory Scanning");
-            ui.horizontal_top(|ui| {
-                ui.checkbox(&mut self.scan_options.is_hex, "Hex");
-                ui.text_edit_singleline(&mut self.scan_options.scan_input);
-                if ui.button("Scan").clicked() {
-                    // TODO: Send Scan command to CoreController
-                    // if let Some(scanner) = self.scanner.borrow_mut() {
-                    //     match self.scan_options.value_type {
-                    //         MemType::U8 => {
-                    //             do_scan::<u8>(scanner, &self.scan_options, &mut self.scan_results)
-                    //         }
-                    //         MemType::U16 => {
-                    //             do_scan::<u16>(scanner, &self.scan_options, &mut self.scan_results)
-                    //         }
-                    //         MemType::U32 => {
-                    //             do_scan::<u32>(scanner, &self.scan_options, &mut self.scan_results)
-                    //         }
-                    //         MemType::U64 => {
-                    //             do_scan::<u64>(scanner, &self.scan_options, &mut self.scan_results)
-                    //         }
-                    //         MemType::I8 => {
-                    //             do_scan::<i8>(scanner, &self.scan_options, &mut self.scan_results)
-                    //         }
-                    //         MemType::I16 => {
-                    //             do_scan::<i16>(scanner, &self.scan_options, &mut self.scan_results)
-                    //         }
-                    //         MemType::I32 => {
-                    //             do_scan::<i32>(scanner, &self.scan_options, &mut self.scan_results)
-                    //         }
-                    //         MemType::I64 => {
-                    //             do_scan::<i64>(scanner, &self.scan_options, &mut self.scan_results)
-                    //         }
-                    //         MemType::F32 => {
-                    //             do_scan::<f32>(scanner, &self.scan_options, &mut self.scan_results)
-                    //         }
-                    //         MemType::F64 => {
-                    //             do_scan::<f64>(scanner, &self.scan_options, &mut self.scan_results)
-                    //         }
-                    //         MemType::Unknown => panic!("Cannot scan for values of unknown type"),
-                    //     }
-                    // }
-                }
-                if ui.button("New Scan").clicked() {
-                    // if let Some(scanner) = self.scanner.borrow_mut() {
-                    //     match self.scan_options.value_type {
-                    //         MemType::U8 => scanner.new_scan(),
-                    //         MemType::U16 => scanner.new_scan(),
-                    //         MemType::U32 => scanner.new_scan(),
-                    //         MemType::U64 => scanner.new_scan(),
-                    //         MemType::I8 => scanner.new_scan(),
-                    //         MemType::I16 => scanner.new_scan(),
-                    //         MemType::I32 => scanner.new_scan(),
-                    //         MemType::I64 => scanner.new_scan(),
-                    //         MemType::F32 => scanner.new_scan(),
-                    //         MemType::F64 => scanner.new_scan(),
-                    //         MemType::Unknown => panic!("Cannot scan for values of unknown type"),
-                    //     };
-                    // }
-                    self.scan_results.visible_results.clear();
-                    self.scan_results.num_results = "No results yet".into();
-                }
-            });
-            ui.heading("Scan Options");
-            ui.vertical_centered(|ui| {
-                ui.columns(2, |cols| {
-                    cols[0].label("Scan Type");
-                    egui::ComboBox::from_id_source("Scan Type")
-                        .selected_text(format!("{}", self.scan_options.scan_type))
-                        .show_ui(&mut cols[1], |ui| {
-                            ui.selectable_value(
-                                &mut self.scan_options.scan_type,
-                                ScanType::Exact,
-                                format!("{}", ScanType::Exact),
+        ui.add_enabled_ui(
+            self.core.as_ref().is_some_and(|core| core.check_attached()),
+            |ui| {
+                ui.heading("Memory Scanning");
+                ui.horizontal_top(|ui| {
+                    ui.checkbox(&mut self.scan_options.is_hex, "Hex");
+                    // TODO: Allow for setting is_hex to true later. For now we don't support hex                    
+                    self.scan_options.is_hex = false;
+                    ui.text_edit_singleline(&mut self.scan_options.scan_input);
+                    if ui.button("Scan").clicked() {
+                        if let Some(core) = self.core.as_ref() {
+                            let mem_type = self.scan_options.value_type;
+                            let mem_value =
+                                mem_type.parse_value(&self.scan_options.scan_input).ok();
+                            let scan_filter = GenericScanFilter::new(
+                                self.scan_options.scan_type,
+                                mem_type,
+                                mem_value,
                             );
-                            ui.selectable_value(
-                                &mut self.scan_options.scan_type,
-                                ScanType::Unknown,
-                                format!("{}", ScanType::Unknown),
-                            );
-                            ui.selectable_value(
-                                &mut self.scan_options.scan_type,
-                                ScanType::Increased,
-                                format!("{}", ScanType::Increased),
-                            );
-                            ui.selectable_value(
-                                &mut self.scan_options.scan_type,
-                                ScanType::Decreased,
-                                format!("{}", ScanType::Decreased),
-                            );
-                        });
-
-                    // Value Type
-                    cols[0].label("Value Type");
-                    egui::ComboBox::from_id_source("Value Type")
-                        .selected_text(format!("{}", self.scan_options.value_type))
-                        .show_ui(&mut cols[1], |ui| {
-                            ui.selectable_value(
-                                &mut self.scan_options.value_type,
-                                MemType::U8,
-                                format!("{}", MemType::U8),
-                            );
-                            ui.selectable_value(
-                                &mut self.scan_options.value_type,
-                                MemType::U16,
-                                format!("{}", MemType::U16),
-                            );
-                            ui.selectable_value(
-                                &mut self.scan_options.value_type,
-                                MemType::U32,
-                                format!("{}", MemType::U32),
-                            );
-                            ui.selectable_value(
-                                &mut self.scan_options.value_type,
-                                MemType::U64,
-                                format!("{}", MemType::U64),
-                            );
-                            ui.selectable_value(
-                                &mut self.scan_options.value_type,
-                                MemType::I8,
-                                format!("{}", MemType::I8),
-                            );
-                            ui.selectable_value(
-                                &mut self.scan_options.value_type,
-                                MemType::I16,
-                                format!("{}", MemType::I16),
-                            );
-                            ui.selectable_value(
-                                &mut self.scan_options.value_type,
-                                MemType::I32,
-                                format!("{}", MemType::I32),
-                            );
-                            ui.selectable_value(
-                                &mut self.scan_options.value_type,
-                                MemType::I64,
-                                format!("{}", MemType::I64),
-                            );
-                            ui.selectable_value(
-                                &mut self.scan_options.value_type,
-                                MemType::F32,
-                                format!("{}", MemType::F32),
-                            );
-                            ui.selectable_value(
-                                &mut self.scan_options.value_type,
-                                MemType::F64,
-                                format!("{}", MemType::F64),
-                            );
-                        });
+                            if let Ok(scan_filter) = scan_filter {
+                                let _ = core.send_command(CoreCommand::Scan(scan_filter));
+                            };
+                        }
+                    }
+                    if ui.button("New Scan").clicked() {
+                        if let Some(core) = self.core.as_ref() {
+                            let _ = core.send_command(CoreCommand::NewScan);
+                        }
+                        self.scan_results.visible_results.clear();
+                        self.scan_results.num_results = "No results yet".into();
+                    }
                 });
-            });
-        });
+                ui.heading("Scan Options");
+                ui.vertical_centered(|ui| {
+                    ui.columns(2, |cols| {
+                        cols[0].label("Scan Type");
+                        egui::ComboBox::from_id_source("Scan Type")
+                            .selected_text(format!("{}", self.scan_options.scan_type))
+                            .show_ui(&mut cols[1], |ui| {
+                                ui.selectable_value(
+                                    &mut self.scan_options.scan_type,
+                                    ScanType::Exact,
+                                    format!("{}", ScanType::Exact),
+                                );
+                                ui.selectable_value(
+                                    &mut self.scan_options.scan_type,
+                                    ScanType::Unknown,
+                                    format!("{}", ScanType::Unknown),
+                                );
+                                ui.selectable_value(
+                                    &mut self.scan_options.scan_type,
+                                    ScanType::Increased,
+                                    format!("{}", ScanType::Increased),
+                                );
+                                ui.selectable_value(
+                                    &mut self.scan_options.scan_type,
+                                    ScanType::Decreased,
+                                    format!("{}", ScanType::Decreased),
+                                );
+                            });
+
+                        // Value Type
+                        cols[0].label("Value Type");
+                        egui::ComboBox::from_id_source("Value Type")
+                            .selected_text(format!("{}", self.scan_options.value_type))
+                            .show_ui(&mut cols[1], |ui| {
+                                ui.selectable_value(
+                                    &mut self.scan_options.value_type,
+                                    MemType::U8,
+                                    format!("{}", MemType::U8),
+                                );
+                                ui.selectable_value(
+                                    &mut self.scan_options.value_type,
+                                    MemType::U16,
+                                    format!("{}", MemType::U16),
+                                );
+                                ui.selectable_value(
+                                    &mut self.scan_options.value_type,
+                                    MemType::U32,
+                                    format!("{}", MemType::U32),
+                                );
+                                ui.selectable_value(
+                                    &mut self.scan_options.value_type,
+                                    MemType::U64,
+                                    format!("{}", MemType::U64),
+                                );
+                                ui.selectable_value(
+                                    &mut self.scan_options.value_type,
+                                    MemType::I8,
+                                    format!("{}", MemType::I8),
+                                );
+                                ui.selectable_value(
+                                    &mut self.scan_options.value_type,
+                                    MemType::I16,
+                                    format!("{}", MemType::I16),
+                                );
+                                ui.selectable_value(
+                                    &mut self.scan_options.value_type,
+                                    MemType::I32,
+                                    format!("{}", MemType::I32),
+                                );
+                                ui.selectable_value(
+                                    &mut self.scan_options.value_type,
+                                    MemType::I64,
+                                    format!("{}", MemType::I64),
+                                );
+                                ui.selectable_value(
+                                    &mut self.scan_options.value_type,
+                                    MemType::F32,
+                                    format!("{}", MemType::F32),
+                                );
+                                ui.selectable_value(
+                                    &mut self.scan_options.value_type,
+                                    MemType::F64,
+                                    format!("{}", MemType::F64),
+                                );
+                            });
+                    });
+                });
+            },
+        );
     }
 
     fn render_results_panel(&mut self, ui: &mut egui::Ui) {
         ui.vertical_centered_justified(|ui| {
             ui.heading("Scan Results");
+            if let Some(core) = self.core.as_ref() {
+                let scan_status = core.get_scan_status();
+                self.scan_results.scan_status = egui::RichText::new(format!("{}", scan_status))
+                    .color(match scan_status {
+                        ScanStatus::Scanning => Color32::LIGHT_BLUE,
+                        ScanStatus::Done(_) => Color32::LIGHT_GREEN,
+                        ScanStatus::Failed(_) => Color32::RED,
+                        _ => Color32::WHITE,
+                    });
+            }
             if self.scan_results.scan_status.text().len() > 0 {
                 ui.label(self.scan_results.scan_status.clone());
             }
-            ui.label(&self.scan_results.num_results);
+            // ui.label(&self.scan_results.num_results);
         });
 
+        if let Some(core) = self.core.as_ref() {
+            let scan_status = core.get_scan_status();
+            if let ScanStatus::Done(num_results) = scan_status {
+                self.scan_results.num_results = format!("{} Results", num_results);
+                self.scan_results.visible_results = core.get_first_results(self.scan_options.value_type, 500);
+            }
+        }
         ui.push_id("ResultsUI", |ui| {
             egui_extras::TableBuilder::new(ui)
                 .striped(true)
@@ -603,90 +502,6 @@ impl Default for MemNinja {
     }
 }
 
-// fn do_scan<T>(
-//     scanner: &mut hoodmem::scanner::Scanner,
-//     scan_options: &ScanOptions,
-//     scan_results: &mut MemValues,
-// ) where
-//     T: Copy
-//         + std::fmt::Debug
-//         + Send
-//         + Sync
-//         + PartialOrd
-//         + PartialEq
-//         + std::ops::Sub<Output = T>
-//         + std::ops::Add<Output = T>
-//         + FromStr,
-// {
-//     match scan_options.scan_type {
-//         ScanType::Exact => {
-//             if let Ok(scan_value) = scan_options.scan_input.parse::<T>() {
-//                 if let Err(scan_err) = scanner.scan(ScanFilter::Exact::<T>(scan_value)) {
-//                     eprintln!("Scan failed: {}", scan_err);
-//                     scan_results.scan_status =
-//                         egui::RichText::new("Scan failed (see console for details)")
-//                             .color(Color32::RED);
-//                 } else {
-//                     scan_results.scan_status =
-//                         egui::RichText::new("Scan succeeded").color(Color32::LIGHT_GREEN);
-//                 }
-//             } else {
-//                 scan_results.scan_status =
-//                     egui::RichText::new("Invalid scan value").color(Color32::RED);
-//                 scan_results.visible_results.clear();
-//             }
-//         }
-//         ScanType::Unknown => {
-//             if let Err(scan_err) = scanner.scan(ScanFilter::Unknown::<T>) {
-//                 eprintln!("Scan failed: {}", scan_err);
-//                 scan_results.scan_status =
-//                     egui::RichText::new("Scan failed (see console for details)")
-//                         .color(Color32::RED);
-//             } else {
-//                 scan_results.scan_status =
-//                     egui::RichText::new("Scan succeeded").color(Color32::LIGHT_GREEN);
-//             }
-//         }
-//         ScanType::Increased => {
-//             if let Err(scan_err) = scanner.scan(ScanFilter::Increased::<T>) {
-//                 eprintln!("Scan failed: {}", scan_err);
-//                 scan_results.scan_status =
-//                     egui::RichText::new("Scan failed (see console for details)")
-//                         .color(Color32::RED);
-//             } else {
-//                 scan_results.scan_status =
-//                     egui::RichText::new("Scan succeeded").color(Color32::LIGHT_GREEN);
-//             }
-//         }
-//         ScanType::Decreased => {
-//             if let Err(scan_err) = scanner.scan(ScanFilter::Decreased::<T>) {
-//                 eprintln!("Scan failed: {}", scan_err);
-//                 scan_results.scan_status =
-//                     egui::RichText::new("Scan failed (see console for details)")
-//                         .color(Color32::RED);
-//             } else {
-//                 scan_results.scan_status =
-//                     egui::RichText::new("Scan succeeded").color(Color32::LIGHT_GREEN);
-//             }
-//         }
-//     }
-
-//     if let Some(num_results) = scanner.count_results() {
-//         scan_results.num_results = format!("{} results", num_results);
-//         if num_results <= 50 {
-//             scan_results.visible_results = scanner
-//                 .get_first_results::<T>(50)
-//                 .iter()
-//                 .map(|(addr, val)| (*addr, format!("{:?}", *val)))
-//                 .collect();
-//         } else {
-//             scan_results.visible_results.clear();
-//         }
-//     } else {
-//         scan_results.num_results = "No results yet".into();
-//         scan_results.visible_results.clear();
-//     }
-// }
 
 impl App for MemNinja {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {

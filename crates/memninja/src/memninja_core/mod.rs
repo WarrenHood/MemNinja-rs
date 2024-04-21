@@ -1,16 +1,22 @@
 pub mod types;
+pub mod utils;
 
+use std::iter;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use anyhow::{Context, Result};
+use hoodmem::scanner::ScanFilter;
 use hoodmem::Process;
 use types::*;
+
+use self::utils::GenericScanFilter;
 
 pub struct Core {
     process: Option<Arc<dyn Process>>,
     scanner: Option<hoodmem::scanner::Scanner>,
     attach_status: AttachStatus,
+    scan_status: ScanStatus
 }
 
 impl Default for Core {
@@ -19,6 +25,7 @@ impl Default for Core {
             process: Default::default(),
             scanner: Default::default(),
             attach_status: Default::default(),
+            scan_status: Default::default()
         }
     }
 }
@@ -149,6 +156,42 @@ impl CoreController {
         }
     }
 
+    /// Gets the scan status of MemNinja Core
+    pub fn get_scan_status(&self) -> ScanStatus {
+        if let Ok(core) = self.core.lock() {
+            core.scan_status.clone()
+        } else {
+            ScanStatus::Unknown
+        }
+    }
+
+    /// Gets the first n results
+    pub fn get_first_results(&self, scan_type: MemType, n: usize) -> Vec<(u64, String)> {
+        if let Ok(core) = self.core.lock() {
+            if let Some(scanner) = core.scanner.as_ref() {
+                match scan_type {
+                    MemType::U8 => scanner.get_first_results::<u8>(n).iter().map(|(addr, v)| (*addr, format!("{:#?}", v))).collect(),
+                    MemType::U16 => scanner.get_first_results::<u16>(n).iter().map(|(addr, v)| (*addr, format!("{:#?}", v))).collect(),
+                    MemType::U32 => scanner.get_first_results::<u32>(n).iter().map(|(addr, v)| (*addr, format!("{:#?}", v))).collect(),
+                    MemType::U64 => scanner.get_first_results::<u32>(n).iter().map(|(addr, v)| (*addr, format!("{:#?}", v))).collect(),
+                    MemType::I8 => scanner.get_first_results::<i8>(n).iter().map(|(addr, v)| (*addr, format!("{:#?}", v))).collect(),
+                    MemType::I16 => scanner.get_first_results::<i16>(n).iter().map(|(addr, v)| (*addr, format!("{:#?}", v))).collect(),
+                    MemType::I32 => scanner.get_first_results::<i32>(n).iter().map(|(addr, v)| (*addr, format!("{:#?}", v))).collect(),
+                    MemType::I64 => scanner.get_first_results::<i64>(n).iter().map(|(addr, v)| (*addr, format!("{:#?}", v))).collect(),
+                    MemType::F32 => scanner.get_first_results::<f32>(n).iter().map(|(addr, v)| (*addr, format!("{:#?}", v))).collect(),
+                    MemType::F64 => scanner.get_first_results::<f64>(n).iter().map(|(addr, v)| (*addr, format!("{:#?}", v))).collect(),
+                    MemType::Unknown => vec![],
+                }
+            }
+            else {
+                vec![]
+            }
+        }
+        else {
+            vec![]
+        }
+    }
+
     /// Checks whether MemNinja core is currently attached to something
     pub fn check_attached(&self) -> bool {
         if let Ok(core) = self.core.lock() {
@@ -174,6 +217,10 @@ pub enum CoreCommand {
     Unknown,
     /// Shut down the MemNinja core thread
     Stop,
+    /// Initializes a new scan
+    NewScan,
+    /// Performs a scan with the given `GenericScanFilter`
+    Scan(GenericScanFilter),
 }
 
 impl CoreCommand {
@@ -182,11 +229,33 @@ impl CoreCommand {
             CoreCommand::Attach(target) => {
                 core.attach(target)?;
             }
-            CoreCommand::Detach => core.detach(),
+            CoreCommand::Detach => {
+                core.detach();
+            },
             CoreCommand::Stop => {
                 // TODO: I guess something probably could be done here.
             }
-            CoreCommand::Unknown => eprintln!("Attempted to run an unknown command"),
+            CoreCommand::Unknown => {
+                eprintln!("Attempted to run an unknown command");
+            },
+            CoreCommand::NewScan => {
+                if let Some(scanner) = &mut core.scanner {
+                    scanner.new_scan();
+                }
+            },
+            CoreCommand::Scan(filter) => {
+                core.scan_status = ScanStatus::Scanning;
+                if let Some(scanner) = &mut core.scanner {
+                    let result = filter.scan(scanner);
+                    let num_results = scanner.count_results().unwrap_or(0);
+                    core.scan_status = match result {
+                        Ok(_) => {
+                            ScanStatus::Done(num_results as u64)
+                        },
+                        Err(err) => ScanStatus::Failed(err.to_string()),
+                    };
+                }
+            }
         };
         Ok(())
     }

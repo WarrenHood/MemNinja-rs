@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use hoodmem::Process;
 use types::*;
 
-struct Core {
+pub struct Core {
     process: Option<Arc<dyn Process>>,
     scanner: Option<hoodmem::scanner::Scanner>,
     attach_status: AttachStatus,
@@ -93,27 +93,11 @@ impl CoreController {
         self.core_thread = Some(std::thread::spawn(move || loop {
             let command = rx.recv();
             if let Ok(mut core) = core.lock() {
-                let result = match command.as_ref() {
-                    std::result::Result::Ok(cmd) => match cmd {
-                        CoreCommand::Attach(target) => core.attach(target),
-                        CoreCommand::Detach => {
-                            core.detach();
-                            Ok(())
-                        }
-                        CoreCommand::Stop => {
-                            println!("MemNinja Core stopped");
-                            break;
-                        }
-                        _ => Err(anyhow::anyhow!("Unimplemented core command: {:?}", cmd)),
-                    },
-                    Err(err) => Err(anyhow::anyhow!("{:?}", err)),
-                };
-                if let Err(err) = result {
-                    eprintln!(
-                        "Failed to execute command {:?}. Error: {:?}",
-                        command.unwrap_or(CoreCommand::Unknown),
-                        err
-                    );
+                if let Ok(command) = command {
+                    let result = command.execute(&mut core);
+                    if let Err(err) = result {
+                        eprintln!("Failed to execute command {:?}. Error: {:?}", command, err);
+                    }
                 }
             } else {
                 eprintln!(
@@ -126,7 +110,7 @@ impl CoreController {
         Ok(())
     }
 
-    // Stop MemNinja Core
+    /// Stop MemNinja Core
     pub fn stop(&mut self) -> Result<()> {
         match self.send_command(CoreCommand::Stop) {
             Ok(_) => {
@@ -190,4 +174,20 @@ pub enum CoreCommand {
     Unknown,
     /// Shut down the MemNinja core thread
     Stop,
+}
+
+impl CoreCommand {
+    pub fn execute(&self, core: &mut Core) -> anyhow::Result<()> {
+        match self {
+            CoreCommand::Attach(target) => {
+                core.attach(target)?;
+            }
+            CoreCommand::Detach => core.detach(),
+            CoreCommand::Stop => {
+                // TODO: I guess something probably could be done here.
+            }
+            CoreCommand::Unknown => eprintln!("Attempted to run an unknown command"),
+        };
+        Ok(())
+    }
 }

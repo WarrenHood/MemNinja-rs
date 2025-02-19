@@ -1,0 +1,14 @@
+[package]
+name = "memninja-tui"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.75"
+hoodmem = { path = "../hoodmem" }
+crossbeam = "0.8.4"
+crossbeam-channel = "0.5.12"
+ratatui = "0.29.0"
+crossterm = "0.28.1"

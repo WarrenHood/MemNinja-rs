@@ -12,16 +12,13 @@
         naersk-lib = pkgs.callPackage naersk { };
         workspace = ./.; # Your Cargo workspace directory
         ldLibraryPath = pkgs.lib.makeLibraryPath (with pkgs; [
-          wayland
-          libGL
           libxkbcommon
-          vulkan-loader
         ]);
       in
       {
         defaultPackage = naersk-lib.buildPackage {
           src = workspace;
-          pname = "memninja"; # Set package name explicitly
+          pname = "memninja-tui"; # Set package name explicitly
         };
         devShell = with pkgs; mkShell {
           nativeBuildInputs = [
@@ -36,9 +33,7 @@
             rustPackages.clippy
             udev
             alsa-lib
-            vulkan-loader
             libxkbcommon
-            wayland
           ];
           RUST_SRC_PATH = pkgs.rustPlatform.rustLibSrc;
           LD_LIBRARY_PATH = ldLibraryPath;

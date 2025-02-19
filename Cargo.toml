@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/hoodmem",
-    "crates/hoodhax",
-    "crates/memninja"
+    # "crates/hoodhax",
+    # "crates/memninja",
+    "crates/memninja-tui",
 ]

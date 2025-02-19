@@ -92,7 +92,7 @@ pub struct RegionResults {
     /// Region base address
     region: MemoryRegion,
     /// Offsets of current hits within this region
-    hit_offsets: Option<Vec<u64>>,
+    hit_offsets: Option<Vec<usize>>,
     /// The last snapshot of this memory region (prev values)
     buffer: Option<Vec<u8>>,
 }
@@ -107,15 +107,15 @@ impl RegionResults {
         }
     }
 
-    pub fn get_results<T: Copy + Send + Sync>(&self) -> Option<Vec<(u64, T)>> {
-        let size_of_t = std::mem::size_of::<T>() as u64;
+    pub fn get_results<T: Copy + Send + Sync>(&self) -> Option<Vec<(usize, T)>> {
+        let size_of_t = std::mem::size_of::<T>();
         if let Some(offsets) = self.hit_offsets.as_ref() {
             if let Some(buffer) = self.buffer.as_ref() {
                 return Some(
                     offsets
                         .into_par_iter()
                         // Ensure we don't read any results outside the buffer
-                        .filter(|offset| **offset + size_of_t <= buffer.len() as u64)
+                        .filter(|offset| **offset + size_of_t <= buffer.len())
                         .map(|offset| {
                             (
                                 *offset + self.region.base_address,
@@ -172,19 +172,19 @@ impl RegionResults {
             + std::ops::Sub<Output = T>
             + std::ops::Add<Output = T>,
     {
-        let size_of_t = std::mem::size_of::<T>() as u64;
+        let size_of_t = std::mem::size_of::<T>();
         if self.buffer.is_none() {
             // There was no previous buffer, this must be the first scan
             match filter {
                 // At least filter on exact value first scans (known initial value)
                 ScanFilter::Exact(_) => {
                     // New exact value scan
-                    let scan_range = 0..(self.region.size as u64 - std::mem::size_of::<T>() as u64);
+                    let scan_range = 0..(self.region.size - std::mem::size_of::<T>());
                     self.hit_offsets = Some(
                         scan_range
                             .into_par_iter()
                             // Ensure we don't read any results outside the buffer
-                            .filter(|offset| *offset + size_of_t <= region_buf.len() as u64)
+                            .filter(|offset| *offset + size_of_t <= region_buf.len())
                             .map(|offset| (offset, read_from_buffer::<T>(&region_buf, offset)))
                             .filter(|(_, val)| filter.matches(val, val))
                             .map(|(addr, _)| addr)
@@ -195,7 +195,7 @@ impl RegionResults {
             }
         } else {
             // Subsequent scans. We have access to previous values here
-            let scan_range = 0..(self.region.size as u64 - std::mem::size_of::<T>() as u64);
+            let scan_range = 0..(self.region.size - std::mem::size_of::<T>());
 
             if self.hit_offsets.is_some() {
                 // We have existing hits, filter on them
@@ -205,7 +205,7 @@ impl RegionResults {
                         .unwrap()
                         .into_par_iter()
                         // Ensure we don't read any results outside the buffer
-                        .filter(|offset| **offset + size_of_t <= region_buf.len() as u64)
+                        .filter(|offset| **offset + size_of_t <= region_buf.len())
                         .map(|offset| {
                             (
                                 offset,
@@ -223,7 +223,7 @@ impl RegionResults {
                     scan_range
                         .into_par_iter()
                         // Ensure we don't read any results outside the buffer
-                        .filter(|offset| *offset + size_of_t <= region_buf.len() as u64)
+                        .filter(|offset| *offset + size_of_t <= region_buf.len())
                         .map(|offset| {
                             (
                                 offset,
@@ -267,7 +267,7 @@ impl Scanner {
         if self.is_new_scan {
             return None;
         }
-        let hit_offsets: Vec<&Vec<u64>> = self
+        let hit_offsets: Vec<&Vec<usize>> = self
             .results
             .values()
             .into_iter()
@@ -290,7 +290,7 @@ impl Scanner {
     }
 
     /// Gets all scan results
-    pub fn get_results<T>(&self) -> Vec<(u64, T)>
+    pub fn get_results<T>(&self) -> Vec<(usize, T)>
     where
         T: Copy + Send + Sync,
     {
@@ -304,7 +304,7 @@ impl Scanner {
     }
 
     /// Gets first `n` scan results
-    pub fn get_first_results<T>(&self, n: usize) -> Vec<(u64, T)>
+    pub fn get_first_results<T>(&self, n: usize) -> Vec<(usize, T)>
     where
         T: Copy + Send + Sync,
     {
@@ -320,7 +320,7 @@ impl Scanner {
 
     /// Gets the result at a given index
     /// Warning: This is bad for performance, prefer getting a range of results
-    pub fn get_nth_result<T>(&self, n: usize) -> Option<(u64, T)>
+    pub fn get_nth_result<T>(&self, n: usize) -> Option<(usize, T)>
     where
         T: Copy + Send + Sync,
     {
@@ -334,7 +334,7 @@ impl Scanner {
     }
 
     /// Gets a range of results
-    pub fn get_results_range<T>(&self, start_index: usize, end_index: usize) -> Vec<(u64, T)>
+    pub fn get_results_range<T>(&self, start_index: usize, end_index: usize) -> Vec<(usize, T)>
     where
         T: Copy + Send + Sync,
     {
@@ -369,12 +369,22 @@ impl Scanner {
     {
         println!("Performing scan with filter: {:?}", filter);
         let regions = self.process.get_writable_regions();
+
+        println!("Writable regions:");
+        for region in regions.iter() {
+            println!(
+                " {:016x} - {:016x}",
+                region.base_address,
+                region.base_address + region.size - 1
+            )
+        }
+
         if self.is_new_scan {
             // Deal with new scans
             for region in regions.iter() {
                 let region_memory = self
                     .process
-                    .read_memory_bytes(region.base_address, region.size as usize);
+                    .read_memory_bytes(region.base_address, region.size);
                 if let Ok(region_memory) = region_memory {
                     self.results.insert(*region, RegionResults::new(*region));
                     self.results

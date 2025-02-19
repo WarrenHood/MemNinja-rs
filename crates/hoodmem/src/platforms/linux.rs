@@ -1,6 +1,6 @@
-use std::io::IoSliceMut;
+use std::{io::IoSliceMut, sync::Arc};
 
-use crate::{MemoryRead, MemoryRegion, ScannableMemoryRegions};
+use crate::{MemoryRegion, Process};
 use anyhow::{anyhow, Result};
 use nix::{
     sys::uio::{process_vm_readv, RemoteIoVec},
@@ -13,20 +13,8 @@ pub struct LinuxProcess {
     pid: Pid,
 }
 
-impl LinuxProcess {
-    pub fn attach(pid: u32) -> Self {
-        Self {
-            pid: Pid::from_raw(pid as i32),
-        }
-    }
-
-    pub fn attach_by_proc_name(name: &str) -> Self {
-        unimplemented!()
-    }
-}
-
-impl MemoryRead for LinuxProcess {
-    fn read_memory_bytes(&self, address: u64, bytes_to_read: usize) -> Result<Vec<u8>> {
+impl Process for LinuxProcess {
+    fn read_memory_bytes(&self, address: usize, bytes_to_read: usize) -> Result<Vec<u8>> {
         let mut buffer: Vec<u8> = Vec::with_capacity(bytes_to_read);
         unsafe {
             buffer.set_len(bytes_to_read);
@@ -48,22 +36,32 @@ impl MemoryRead for LinuxProcess {
 
         Ok(buffer)
     }
-}
 
-impl ScannableMemoryRegions for LinuxProcess {
     fn get_writable_regions(&self) -> Vec<MemoryRegion> {
         let mut regions = Vec::new();
         if let Ok(maps) = get_process_maps(self.pid.into()) {
             for map in maps {
                 if map.is_write() && map.is_read() {
                     regions.push(MemoryRegion {
-                        base_address: map.start() as u64,
-                        size: map.size() as u64,
+                        base_address: map.start(),
+                        size: map.size(),
                     })
                 }
             }
         }
 
         regions
+    }
+}
+
+impl LinuxProcess {
+    pub fn attach_external(pid: u32) -> Result<Arc<dyn Process>> {
+        Ok(Arc::new(Self {
+            pid: Pid::from_raw(pid as i32),
+        }))
+    }
+
+    pub fn attach_external_by_name(name: &str) -> Result<Arc<dyn Process>> {
+        unimplemented!()
     }
 }

@@ -10,9 +10,19 @@
       let
         pkgs = import nixpkgs { inherit system; };
         naersk-lib = pkgs.callPackage naersk { };
+        workspace = ./.; # Your Cargo workspace directory
+        ldLibraryPath = pkgs.lib.makeLibraryPath (with pkgs; [
+          wayland
+          libGL
+          libxkbcommon
+          vulkan-loader
+        ]);
       in
       {
-        defaultPackage = naersk-lib.buildPackage ./.;
+        defaultPackage = naersk-lib.buildPackage {
+          src = workspace;
+          pname = "memninja"; # Set package name explicitly
+        };
         devShell = with pkgs; mkShell {
           nativeBuildInputs = [
             pkg-config
@@ -31,11 +41,12 @@
             wayland
           ];
           RUST_SRC_PATH = pkgs.rustPlatform.rustLibSrc;
-          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
-            pkgs.vulkan-loader
-            pkgs.libxkbcommon
-          ];
+          LD_LIBRARY_PATH = ldLibraryPath;
         };
+
+        shellHook = ''
+          export LD_LIBRARY_PATH="${ldLibraryPath}:$LD_LIBRARY_PATH"
+        '';
       }
     );
 }

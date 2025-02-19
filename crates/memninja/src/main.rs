@@ -230,7 +230,7 @@ impl TreeBehaviour {
                 ui.heading("Memory Scanning");
                 ui.horizontal_top(|ui| {
                     ui.checkbox(&mut self.scan_options.is_hex, "Hex");
-                    // TODO: Allow for setting is_hex to true later. For now we don't support hex                    
+                    // TODO: Allow for setting is_hex to true later. For now we don't support hex
                     self.scan_options.is_hex = false;
                     ui.text_edit_singleline(&mut self.scan_options.scan_input);
                     if ui.button("Scan").clicked() {
@@ -370,7 +370,8 @@ impl TreeBehaviour {
             let scan_status = core.get_scan_status();
             if let ScanStatus::Done(num_results) = scan_status {
                 self.scan_results.num_results = format!("{} Results", num_results);
-                self.scan_results.visible_results = core.get_first_results(self.scan_options.value_type, 500);
+                self.scan_results.visible_results =
+                    core.get_first_results(self.scan_options.value_type, 500);
             }
         }
         ui.push_id("ResultsUI", |ui| {
@@ -477,7 +478,7 @@ struct ScanOptions {
 struct MemValues {
     scan_status: egui::RichText,
     num_results: String,
-    visible_results: Vec<(u64, String)>,
+    visible_results: Vec<(usize, String)>,
 }
 
 impl Default for MemNinja {
@@ -501,7 +502,6 @@ impl Default for MemNinja {
         }
     }
 }
-
 
 impl App for MemNinja {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {

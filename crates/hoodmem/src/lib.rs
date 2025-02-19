@@ -29,3 +29,8 @@ pub fn attach_external(pid: u32) -> Result<Arc<dyn Process>> {
     #[cfg(target_os = "linux")]
     LinuxProcess::attach_external(pid)
 }
+
+/// Attach to an external process on the native system
+pub fn attach_external_by_name(name: &str) -> Result<Arc<dyn Process>> {
+    unimplemented!()
+}

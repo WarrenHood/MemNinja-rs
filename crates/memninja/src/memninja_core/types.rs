@@ -18,7 +18,6 @@ impl Default for AttachStatus {
     }
 }
 
-
 #[derive(Debug, Default, Clone)]
 pub enum ScanStatus {
     /// Ready to scan
@@ -31,9 +30,8 @@ pub enum ScanStatus {
     /// Scan failed for some reason
     Failed(String),
     /// Unknown status
-    Unknown
+    Unknown,
 }
-
 
 impl std::fmt::Display for ScanStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -46,7 +44,6 @@ impl std::fmt::Display for ScanStatus {
         }
     }
 }
-
 
 #[derive(Debug, Default, PartialEq)]
 pub enum AttachType {
@@ -186,7 +183,7 @@ impl std::fmt::Display for MemType {
 }
 
 pub enum CheatType {
-    Simple { addr: u64, mem_type: MemType },
+    Simple { addr: usize, mem_type: MemType },
 }
 
 pub trait CheatSummary {

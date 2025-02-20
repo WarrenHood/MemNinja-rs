@@ -103,14 +103,14 @@ impl CoreController {
                 if let Ok(command) = command {
                     let result = command.execute(&mut core);
                     if let Err(err) = result {
-                        eprintln!("Failed to execute command {:?}. Error: {:?}", command, err);
+                        // eprintln!("Failed to execute command {:?}. Error: {:?}", command, err);
                     }
                 }
             } else {
-                eprintln!(
-                    "Failed to accquire MemNinja Core lock. Dropping command: {:?}",
-                    command
-                );
+                // eprintln!(
+                //     "Failed to accquire MemNinja Core lock. Dropping command: {:?}",
+                //     command
+                // );
             }
         }));
         self.running = true;
@@ -274,7 +274,7 @@ impl CoreCommand {
                 // TODO: I guess something probably could be done here.
             }
             CoreCommand::Unknown => {
-                eprintln!("Attempted to run an unknown command");
+                // eprintln!("Attempted to run an unknown command");
             }
             CoreCommand::NewScan => {
                 if let Some(scanner) = &mut core.scanner {

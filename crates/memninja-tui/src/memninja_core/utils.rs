@@ -1,5 +1,6 @@
-use crate::{MemType, MemValue, ScanType};
 use hoodmem::scanner::{ScanFilter, Scanner};
+
+use super::types::{MemType, MemValue, ScanType};
 
 #[derive(Debug)]
 pub enum GenericScanFilter {

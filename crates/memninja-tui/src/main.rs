@@ -1,17 +1,24 @@
+mod memninja_core;
+use memninja_core::{
+    types::{AttachTarget, MemType, ScanType},
+    CoreCommand, CoreController,
+};
+
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEvent};
+
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    text::Line,
+    text::{Line, Span},
     widgets::{Block, BorderType, Paragraph},
 };
 use ratatui::{DefaultTerminal, Frame};
-use std::rc::Rc;
 
 fn main() -> Result<()> {
     let terminal = ratatui::init();
-    let result = run(terminal);
+    let mut app = App::new();
+    let result = app.run(terminal);
     ratatui::restore();
     result
 }
@@ -23,6 +30,7 @@ enum AppMode {
 struct App {
     pid_text: String,
     mode: AppMode,
+    core_ctl: CoreController,
 }
 
 impl App {
@@ -30,10 +38,25 @@ impl App {
         Self {
             pid_text: "".into(),
             mode: AppMode::EditingPID,
+            core_ctl: CoreController::default(),
+        }
+    }
+
+    fn run(&mut self, mut terminal: DefaultTerminal) -> Result<()> {
+        self.core_ctl.start()?;
+        loop {
+            terminal.draw(|frame| self.render(frame))?;
+            if let Event::Key(KeyEvent { code, .. }) = event::read()? {
+                if code == KeyCode::Esc {
+                    return Ok(());
+                }
+                self.handle_input(code);
+            }
         }
     }
 
     fn render(&self, frame: &mut Frame) {
+        let is_attached = self.core_ctl.check_attached();
         let [main_area] = Layout::default()
             .direction(Direction::Vertical)
             .constraints(vec![Constraint::Percentage(100)])
@@ -42,7 +65,7 @@ impl App {
         let [top, bottom] = Layout::default()
             .direction(Direction::Vertical)
             .constraints(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
-            .margin(1)
+            .margin(2)
             .areas(main_area);
 
         let [top_left, top_right] = Layout::default()
@@ -55,37 +78,38 @@ impl App {
             .constraints(vec![Constraint::Length(3), Constraint::Fill(1)])
             .areas(top_left);
 
-        let [pid_label_area, pid_box_area] = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(vec![Constraint::Percentage(25), Constraint::Percentage(75)])
-            .areas(pid_area);
-
-        let [pid_input_area] = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(vec![Constraint::Percentage(100)])
-            .margin(1)
-            .areas(pid_box_area);
-
         let main_app_block = Block::default()
             .title("MemNinja")
             .borders(ratatui::widgets::Borders::ALL)
             .border_type(BorderType::Thick);
         frame.render_widget(main_app_block, main_area);
 
-        let pid_label =
-            Paragraph::new(vec![Line::from("PID:")]).style(Style::default().fg(Color::White));
-        frame.render_widget(pid_label, pid_label_area);
+        let pid_input = Paragraph::new(self.pid_text.as_str())
+            .style(Style::default().fg(Color::Cyan))
+            .block(
+                Block::bordered()
+                    .title("Process ID")
+                    .title_bottom("<a>")
+                    .title_bottom("Attach")
+                    .title_bottom("<d>")
+                    .title_bottom("Detach")
+                    .title(
+                        Line::from(if is_attached {
+                            "Attached"
+                        } else {
+                            "Not attached"
+                        })
+                        .style(Style::default().fg(if is_attached {
+                            Color::LightGreen
+                        } else {
+                            Color::LightRed
+                        }))
+                        .right_aligned(),
+                    ),
+            )
+            .centered();
+        frame.render_widget(pid_input, pid_area);
 
-        // PID input block
-        let pid_input_block = Block::bordered();
-        frame.render_widget(pid_input_block, pid_box_area);
-
-        // The PID input (currently a text field)
-        let pid_input =
-            Paragraph::new(self.pid_text.as_str()).style(Style::default().fg(Color::Cyan));
-        frame.render_widget(pid_input, pid_input_area);
-
-        // The Results box
         let results_block = Block::bordered().title("Results");
         frame.render_widget(results_block, results_area);
     }
@@ -93,8 +117,24 @@ impl App {
     fn handle_pid_input(&mut self, code: KeyCode) {
         if let KeyCode::Char(c) = code {
             if c.is_digit(10) {
-                self.pid_text = format!("{}{}", self.pid_text, c);
+                let new_pid_text = format!("{}{}", self.pid_text, c);
+                if let Ok(new_pid) = u32::from_str_radix(&new_pid_text, 10) {
+                    self.pid_text = new_pid_text;
+                }
             }
+            match c {
+                'a' => {
+                    if let Ok(pid) = u32::from_str_radix(&self.pid_text, 10) {
+                        let _ = self
+                            .core_ctl
+                            .send_command(CoreCommand::Attach(AttachTarget::Process(pid)));
+                    }
+                }
+                'd' => {
+                    let _ = self.core_ctl.send_command(CoreCommand::Detach);
+                }
+                _ => {}
+            };
         } else if let KeyCode::Backspace = code {
             self.pid_text.truncate(self.pid_text.len() - 1);
         }
@@ -103,20 +143,6 @@ impl App {
     pub fn handle_input(&mut self, code: KeyCode) {
         match self.mode {
             AppMode::EditingPID => self.handle_pid_input(code),
-        }
-    }
-}
-
-fn run(mut terminal: DefaultTerminal) -> Result<()> {
-    let mut app = Rc::new(App::new());
-    loop {
-        let render = |frame: &mut Frame| app.render(frame);
-        terminal.draw(render)?;
-        if let Event::Key(KeyEvent { code, .. }) = event::read()? {
-            if code == KeyCode::Esc {
-                return Ok(());
-            }
-            Rc::get_mut(&mut app).unwrap().handle_input(code);
         }
     }
 }

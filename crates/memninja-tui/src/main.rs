@@ -1,4 +1,6 @@
 mod memninja_core;
+mod widgets;
+
 use memninja_core::{
     types::{AttachTarget, MemType, ScanType},
     CoreCommand, CoreController,
@@ -14,6 +16,7 @@ use ratatui::{
     widgets::{Block, BorderType, Paragraph},
 };
 use ratatui::{DefaultTerminal, Frame};
+use widgets::{EnumSelect, EnumSelectState};
 
 fn main() -> Result<()> {
     let terminal = ratatui::init();
@@ -31,14 +34,26 @@ struct App {
     pid_text: String,
     mode: AppMode,
     core_ctl: CoreController,
+    scan_state: ScanState,
+}
+
+struct ScanState {
+    scan_type: EnumSelectState<ScanType>,
+    mem_type: EnumSelectState<MemType>,
+    scan_value: String,
 }
 
 impl App {
     pub fn new() -> Self {
         Self {
-            pid_text: "".into(),
+            pid_text: String::new(),
             mode: AppMode::EditingPID,
             core_ctl: CoreController::default(),
+            scan_state: ScanState {
+                scan_type: EnumSelectState::new(),
+                mem_type: EnumSelectState::new(),
+                scan_value: String::new(),
+            },
         }
     }
 
@@ -55,7 +70,7 @@ impl App {
         }
     }
 
-    fn render(&self, frame: &mut Frame) {
+    fn render(&mut self, frame: &mut Frame) {
         let is_attached = self.core_ctl.check_attached();
         let [main_area] = Layout::default()
             .direction(Direction::Vertical)
@@ -112,6 +127,41 @@ impl App {
 
         let results_block = Block::bordered().title("Results");
         frame.render_widget(results_block, results_area);
+
+        // Scanner
+        frame.render_widget(Block::bordered().title("Scanner"), top_right);
+        let [scan_options_area, scan_value_area, _] = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(vec![
+                Constraint::Length(3),
+                Constraint::Length(3),
+                Constraint::Fill(1),
+            ])
+            .margin(1)
+            .areas(top_right);
+
+        // Scan and value type
+        let [scan_type_area, mem_type_area] = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(vec![Constraint::Fill(1), Constraint::Fill(1)])
+            .areas(scan_options_area);
+
+        let scan_type = EnumSelect::<ScanType>::new("Scan Type");
+        frame.render_stateful_widget(scan_type, scan_type_area, &mut self.scan_state.scan_type);
+        let mem_type = EnumSelect::<MemType>::new("Value Type");
+        frame.render_stateful_widget(mem_type, mem_type_area, &mut self.scan_state.mem_type);
+
+        // Scan value filter
+        let scan_value = Paragraph::new(self.scan_state.scan_value.clone()).block(
+            Block::bordered()
+                .title("Scan Value")
+                .title_bottom(Line::from("<Enter>").right_aligned())
+                .title_bottom(Line::from("Perform Scan").right_aligned()),
+        );
+        frame.render_widget(scan_value, scan_value_area);
+
+        // Cheats area
+        frame.render_widget(Block::bordered().title("Cheats"), bottom);
     }
 
     fn handle_pid_input(&mut self, code: KeyCode) {

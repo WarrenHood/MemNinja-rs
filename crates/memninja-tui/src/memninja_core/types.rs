@@ -1,3 +1,7 @@
+use std::str::FromStr;
+
+use strum::{EnumIter, EnumString};
+
 #[derive(Debug, Clone)]
 pub enum AttachTarget {
     Process(u32),
@@ -52,7 +56,7 @@ pub enum AttachType {
     ByWindowName,
 }
 
-#[derive(Default, PartialEq, Debug, Clone, Copy)]
+#[derive(Default, PartialEq, Debug, Clone, Copy, EnumIter)]
 pub enum ScanType {
     #[default]
     Exact,
@@ -108,7 +112,7 @@ impl std::fmt::Display for MemValue {
     }
 }
 
-#[derive(Default, PartialEq, Clone, Copy)]
+#[derive(Default, PartialEq, Clone, Copy, EnumIter)]
 pub enum MemType {
     #[default]
     U8,

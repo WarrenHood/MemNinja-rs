@@ -19,26 +19,8 @@ impl<'a> InputBox<'a> {
         }
     }
 
-    pub fn title<T>(mut self, title: T) -> Self
-    where
-        T: Into<Title<'a>>,
-    {
-        self.block = self.block.title(title);
-        self
-    }
-
-    pub fn title_bottom<T: Into<Line<'a>>>(mut self, title: T) -> Self {
-        self.block = self.block.title_bottom(title);
-        self
-    }
-
-    pub fn box_fg(mut self, color: Color) -> Self {
-        self.block = self.block.style(Style::default().fg(color));
-        self
-    }
-
-    pub fn box_bg(mut self, color: Color) -> Self {
-        self.block = self.block.style(Style::default().bg(color));
+    pub fn edit_block(mut self, edit_fn: impl Fn(Block) -> Block) -> Self {
+        self.block = edit_fn(self.block);
         self
     }
 

@@ -52,23 +52,28 @@ impl<'a> App<'a> {
     pub fn new() -> Self {
         Self {
             should_exit: false,
-            pid_input: InputBox::new()
-                .title("Process ID")
-                .title_bottom("<p>")
-                .title_bottom("Focus")
-                .title_bottom("<a>")
-                .title_bottom("Attach")
-                .title_bottom("<d>")
-                .title_bottom("Detach"),
+            pid_input: InputBox::new().edit_block(|block| {
+                block
+                    .clone()
+                    .title("Process ID")
+                    .title_bottom("<p>")
+                    .title_bottom("Focus")
+                    .title_bottom("<a>")
+                    .title_bottom("Attach")
+                    .title_bottom("<d>")
+                    .title_bottom("Detach")
+            }),
             mode: AppMode::None,
             core_ctl: CoreController::default(),
             scan_state: ScanState {
                 scan_type: EnumSelectState::new(),
                 mem_type: EnumSelectState::new(),
-                scan_value: InputBox::new()
-                    .title("Scan Value")
-                    .title_bottom("</>")
-                    .title_bottom("Focus"),
+                scan_value: InputBox::new().edit_block(|block| {
+                    block
+                        .title("Scan Value")
+                        .title_bottom("</>")
+                        .title_bottom("Focus")
+                }),
             },
         }
     }
@@ -112,19 +117,21 @@ impl<'a> App<'a> {
             .border_type(BorderType::Thick);
         frame.render_widget(main_app_block, main_area);
 
-        let pid_input = self.pid_input.clone().title(
-            Line::from(if is_attached {
-                "Attached"
-            } else {
-                "Not attached"
-            })
-            .style(Style::default().fg(if is_attached {
-                Color::LightGreen
-            } else {
-                Color::LightRed
-            }))
-            .right_aligned(),
-        );
+        let pid_input = self.pid_input.clone().edit_block(|block| {
+            block.title(
+                Line::from(if is_attached {
+                    "Attached"
+                } else {
+                    "Not attached"
+                })
+                .style(Style::default().fg(if is_attached {
+                    Color::LightGreen
+                } else {
+                    Color::LightRed
+                }))
+                .right_aligned(),
+            )
+        });
         frame.render_widget(&pid_input, pid_area);
 
         // Results
@@ -215,15 +222,25 @@ impl<'a> App<'a> {
 
     fn update_focus_colors(&mut self) {
         self.pid_input = if self.mode == AppMode::EditingPID {
-            self.pid_input.clone().box_fg(Color::Cyan)
+            self.pid_input
+                .clone()
+                .edit_block(|block| block.style(Style::default().fg(Color::Cyan)))
         } else {
-            self.pid_input.clone().box_fg(Color::default())
+            self.pid_input
+                .clone()
+                .edit_block(|block| block.style(Style::default().fg(Color::default())))
         };
 
         self.scan_state.scan_value = if self.mode == AppMode::EditingScanValue {
-            self.scan_state.scan_value.clone().box_fg(Color::Cyan)
+            self.scan_state
+                .scan_value
+                .clone()
+                .edit_block(|block| block.style(Style::default().fg(Color::Cyan)))
         } else {
-            self.scan_state.scan_value.clone().box_fg(Color::default())
+            self.scan_state
+                .scan_value
+                .clone()
+                .edit_block(|block| block.style(Style::default().fg(Color::default())))
         };
     }
 

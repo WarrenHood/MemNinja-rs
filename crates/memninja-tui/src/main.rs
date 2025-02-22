@@ -7,7 +7,7 @@ use memninja_core::{
 };
 
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode, KeyEvent};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 
 use ratatui::{
     layout::{Constraint, Direction, Layout},
@@ -149,9 +149,17 @@ impl<'a> App<'a> {
             .constraints(vec![Constraint::Fill(1), Constraint::Fill(1)])
             .areas(scan_options_area);
 
-        let scan_type = EnumSelect::<ScanType>::new("Scan Type");
+        let mut scan_type = EnumSelect::<ScanType>::new("Scan Type");
+        scan_type.block = scan_type.block.title_bottom("<T>");
+        scan_type.block = scan_type.block.title_bottom("Cycle Prev");
+        scan_type.block = scan_type.block.title_bottom("<t>");
+        scan_type.block = scan_type.block.title_bottom("Cycle Next");
         frame.render_stateful_widget(scan_type, scan_type_area, &mut self.scan_state.scan_type);
-        let mem_type = EnumSelect::<MemType>::new("Value Type");
+        let mut mem_type = EnumSelect::<MemType>::new("Value Type");
+        mem_type.block = mem_type.block.title_bottom("<M>");
+        mem_type.block = mem_type.block.title_bottom("Cycle Prev");
+        mem_type.block = mem_type.block.title_bottom("<m>");
+        mem_type.block = mem_type.block.title_bottom("Cycle Next");
         frame.render_stateful_widget(mem_type, mem_type_area, &mut self.scan_state.mem_type);
 
         // Scan value filter
@@ -181,6 +189,18 @@ impl<'a> App<'a> {
                 '/' => self.mode = AppMode::EditingScanValue,
                 'p' => self.mode = AppMode::EditingPID,
                 'q' => self.should_exit = true,
+                't' => {
+                    self.scan_state.scan_type.select_next();
+                }
+                'T' => {
+                    self.scan_state.scan_type.select_prev();
+                }
+                'm' => {
+                    self.scan_state.mem_type.select_next();
+                }
+                'M' => {
+                    self.scan_state.mem_type.select_prev();
+                }
                 _ => {}
             };
             self.update_focus_colors();

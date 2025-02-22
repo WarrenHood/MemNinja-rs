@@ -1,19 +1,19 @@
 pub mod input_box;
 
-use ratatui::widgets::{Block, Paragraph, StatefulWidget, Widget};
+use ratatui::widgets::{block::Title, Block, Paragraph, StatefulWidget, Widget};
 use std::marker::PhantomData;
 use strum::IntoEnumIterator;
 
-pub struct EnumSelect<T> {
+pub struct EnumSelect<'a, T> {
     _marker: PhantomData<T>,
-    title: String,
+    pub block: Block<'a>,
 }
 
-impl<T> EnumSelect<T> {
-    pub fn new(title: &str) -> Self {
+impl<'a, T> EnumSelect<'a, T> {
+    pub fn new(title: &'a str) -> Self {
         Self {
             _marker: PhantomData,
-            title: title.into(),
+            block: Block::bordered().title(title),
         }
     }
 }
@@ -51,7 +51,7 @@ where
     }
 }
 
-impl<T> StatefulWidget for EnumSelect<T>
+impl<'a, T> StatefulWidget for EnumSelect<'a, T>
 where
     T: IntoEnumIterator + ToString,
 {
@@ -68,7 +68,7 @@ where
             .get(state.index)
             .map_or_else(|| "INVALID OPTION".to_string(), |choice| choice.to_string());
 
-        let paragraph = Paragraph::new(text).block(Block::bordered().title(self.title));
+        let paragraph = Paragraph::new(text).block(self.block);
         Widget::render(paragraph, area, buf);
     }
 }

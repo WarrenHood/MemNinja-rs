@@ -367,17 +367,17 @@ impl Scanner {
             + std::ops::Sub<Output = T>
             + std::ops::Add<Output = T>,
     {
-        println!("Performing scan with filter: {:?}", filter);
+        // println!("Performing scan with filter: {:?}", filter);
         let regions = self.process.get_writable_regions();
 
-        println!("Writable regions:");
-        for region in regions.iter() {
-            println!(
-                " {:016x} - {:016x}",
-                region.base_address,
-                region.base_address + region.size - 1
-            )
-        }
+        // println!("Writable regions:");
+        // for region in regions.iter() {
+        //     println!(
+        //         " {:016x} - {:016x}",
+        //         region.base_address,
+        //         region.base_address + region.size - 1
+        //     )
+        // }
 
         if self.is_new_scan {
             // Deal with new scans

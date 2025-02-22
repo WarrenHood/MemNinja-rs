@@ -3,6 +3,7 @@ mod widgets;
 
 use memninja_core::{
     types::{AttachTarget, MemType, ScanType},
+    utils::GenericScanFilter,
     CoreCommand, CoreController,
 };
 
@@ -67,9 +68,7 @@ impl<'a> App<'a> {
                 scan_value: InputBox::new()
                     .title("Scan Value")
                     .title_bottom("</>")
-                    .title_bottom("Focus")
-                    .title_bottom(Line::from("<Enter>").right_aligned())
-                    .title_bottom(Line::from("Perform Scan").right_aligned()),
+                    .title_bottom("Focus"),
             },
         }
     }
@@ -128,11 +127,56 @@ impl<'a> App<'a> {
         );
         frame.render_widget(&pid_input, pid_area);
 
-        let results_block = Block::bordered().title("Results");
+        // Results
+        let mut results_block = Block::bordered().title("Results");
+
+        let scan_status = self.core_ctl.get_scan_status();
+        match scan_status {
+            memninja_core::types::ScanStatus::Ready => {
+                results_block = results_block.title(Line::from("Ready to scan").right_aligned());
+            }
+            memninja_core::types::ScanStatus::Scanning => {
+                results_block = results_block.title(
+                    Line::from("Scanning...")
+                        .right_aligned()
+                        .style(Style::default().fg(Color::Cyan)),
+                );
+            }
+            memninja_core::types::ScanStatus::Done(num_results) => {
+                results_block = results_block.title(
+                    Line::from(format!("{num_results} results"))
+                        .right_aligned()
+                        .style(Style::default().fg(Color::Green)),
+                );
+            }
+            memninja_core::types::ScanStatus::Failed(reason) => {
+                results_block = results_block.title(
+                    Line::from(format!("Failed to scan: {reason}"))
+                        .right_aligned()
+                        .style(Style::default().fg(Color::Red)),
+                );
+            }
+            memninja_core::types::ScanStatus::Unknown => {
+                results_block = results_block.title(
+                    Line::from(format!("Unknown scan status"))
+                        .right_aligned()
+                        .style(Style::default().fg(Color::Yellow)),
+                );
+            }
+        }
+
         frame.render_widget(results_block, results_area);
 
         // Scanner
-        frame.render_widget(Block::bordered().title("Scanner"), top_right);
+        frame.render_widget(
+            Block::bordered()
+                .title("Scanner")
+                .title_bottom(Line::from("<Enter>").right_aligned())
+                .title_bottom(Line::from("Perform Scan").right_aligned())
+                .title_bottom(Line::from("<Shift><Enter>").right_aligned())
+                .title_bottom(Line::from("Perform New Scan").right_aligned()),
+            top_right,
+        );
         let [scan_options_area, scan_value_area, _] = Layout::default()
             .direction(Direction::Vertical)
             .constraints(vec![
@@ -173,17 +217,40 @@ impl<'a> App<'a> {
         self.pid_input = if self.mode == AppMode::EditingPID {
             self.pid_input.clone().box_fg(Color::Cyan)
         } else {
-            self.pid_input.clone().box_fg(Color::White)
+            self.pid_input.clone().box_fg(Color::default())
         };
 
         self.scan_state.scan_value = if self.mode == AppMode::EditingScanValue {
             self.scan_state.scan_value.clone().box_fg(Color::Cyan)
         } else {
-            self.scan_state.scan_value.clone().box_fg(Color::White)
+            self.scan_state.scan_value.clone().box_fg(Color::default())
         };
     }
 
     fn handle_global_input(&mut self, event: KeyEvent) {
+        if event.code == KeyCode::Enter {
+            let scan_type = self.scan_state.scan_type.get_value();
+            let mem_type = self.scan_state.mem_type.get_value();
+            let scan_text = self.scan_state.scan_value.text.clone();
+
+            let mem_value = if scan_text.len() > 0 {
+                if let Ok(mem_value) = mem_type.parse_value(&scan_text) {
+                    Some(mem_value)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            if event.modifiers.contains(KeyModifiers::SHIFT) {
+                let _ = self.core_ctl.send_command(CoreCommand::NewScan);
+            }
+
+            if let Ok(scan_filter) = GenericScanFilter::new(scan_type, mem_type, mem_value) {
+                let _ = self.core_ctl.send_command(CoreCommand::Scan(scan_filter));
+            }
+        }
         if let KeyCode::Char(c) = event.code {
             match c {
                 '/' => self.mode = AppMode::EditingScanValue,

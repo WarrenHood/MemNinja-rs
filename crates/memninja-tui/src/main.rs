@@ -16,7 +16,7 @@ use ratatui::{
     widgets::{Block, BorderType, Paragraph},
 };
 use ratatui::{DefaultTerminal, Frame};
-use widgets::{EnumSelect, EnumSelectState};
+use widgets::{input_box::InputBox, EnumSelect, EnumSelectState};
 
 fn main() -> Result<()> {
     let terminal = ratatui::init();
@@ -26,48 +26,62 @@ fn main() -> Result<()> {
     result
 }
 
+#[derive(PartialEq, Eq)]
 enum AppMode {
     EditingPID,
+    EditingScanValue,
+    None,
 }
 
-struct App {
-    pid_text: String,
+struct App<'a> {
+    should_exit: bool,
+    pid_input: InputBox<'a>,
     mode: AppMode,
     core_ctl: CoreController,
-    scan_state: ScanState,
+    scan_state: ScanState<'a>,
 }
 
-struct ScanState {
+struct ScanState<'a> {
     scan_type: EnumSelectState<ScanType>,
     mem_type: EnumSelectState<MemType>,
-    scan_value: String,
+    scan_value: InputBox<'a>,
 }
 
-impl App {
+impl<'a> App<'a> {
     pub fn new() -> Self {
         Self {
-            pid_text: String::new(),
-            mode: AppMode::EditingPID,
+            should_exit: false,
+            pid_input: InputBox::new()
+                .title("Process ID")
+                .title_bottom("<p>")
+                .title_bottom("Focus")
+                .title_bottom("<a>")
+                .title_bottom("Attach")
+                .title_bottom("<d>")
+                .title_bottom("Detach"),
+            mode: AppMode::None,
             core_ctl: CoreController::default(),
             scan_state: ScanState {
                 scan_type: EnumSelectState::new(),
                 mem_type: EnumSelectState::new(),
-                scan_value: String::new(),
+                scan_value: InputBox::new()
+                    .title("Scan Value")
+                    .title_bottom("</>")
+                    .title_bottom("Focus")
+                    .title_bottom(Line::from("<Enter>").right_aligned())
+                    .title_bottom(Line::from("Perform Scan").right_aligned()),
             },
         }
     }
 
     fn run(&mut self, mut terminal: DefaultTerminal) -> Result<()> {
         self.core_ctl.start()?;
-        loop {
+        Ok(while !self.should_exit {
             terminal.draw(|frame| self.render(frame))?;
-            if let Event::Key(KeyEvent { code, .. }) = event::read()? {
-                if code == KeyCode::Esc {
-                    return Ok(());
-                }
-                self.handle_input(code);
+            if let Event::Key(key_event) = event::read()? {
+                self.handle_input(key_event);
             }
-        }
+        })
     }
 
     fn render(&mut self, frame: &mut Frame) {
@@ -99,31 +113,20 @@ impl App {
             .border_type(BorderType::Thick);
         frame.render_widget(main_app_block, main_area);
 
-        let pid_input = Paragraph::new(self.pid_text.as_str())
-            .style(Style::default().fg(Color::Cyan))
-            .block(
-                Block::bordered()
-                    .title("Process ID")
-                    .title_bottom("<a>")
-                    .title_bottom("Attach")
-                    .title_bottom("<d>")
-                    .title_bottom("Detach")
-                    .title(
-                        Line::from(if is_attached {
-                            "Attached"
-                        } else {
-                            "Not attached"
-                        })
-                        .style(Style::default().fg(if is_attached {
-                            Color::LightGreen
-                        } else {
-                            Color::LightRed
-                        }))
-                        .right_aligned(),
-                    ),
-            )
-            .centered();
-        frame.render_widget(pid_input, pid_area);
+        let pid_input = self.pid_input.clone().title(
+            Line::from(if is_attached {
+                "Attached"
+            } else {
+                "Not attached"
+            })
+            .style(Style::default().fg(if is_attached {
+                Color::LightGreen
+            } else {
+                Color::LightRed
+            }))
+            .right_aligned(),
+        );
+        frame.render_widget(&pid_input, pid_area);
 
         let results_block = Block::bordered().title("Results");
         frame.render_widget(results_block, results_area);
@@ -152,47 +155,79 @@ impl App {
         frame.render_stateful_widget(mem_type, mem_type_area, &mut self.scan_state.mem_type);
 
         // Scan value filter
-        let scan_value = Paragraph::new(self.scan_state.scan_value.clone()).block(
-            Block::bordered()
-                .title("Scan Value")
-                .title_bottom(Line::from("<Enter>").right_aligned())
-                .title_bottom(Line::from("Perform Scan").right_aligned()),
-        );
-        frame.render_widget(scan_value, scan_value_area);
+        frame.render_widget(&self.scan_state.scan_value, scan_value_area);
 
         // Cheats area
         frame.render_widget(Block::bordered().title("Cheats"), bottom);
     }
 
-    fn handle_pid_input(&mut self, code: KeyCode) {
-        if let KeyCode::Char(c) = code {
-            if c.is_digit(10) {
-                let new_pid_text = format!("{}{}", self.pid_text, c);
-                if let Ok(new_pid) = u32::from_str_radix(&new_pid_text, 10) {
-                    self.pid_text = new_pid_text;
-                }
-            }
+    fn update_focus_colors(&mut self) {
+        self.pid_input = if self.mode == AppMode::EditingPID {
+            self.pid_input.clone().box_fg(Color::Cyan)
+        } else {
+            self.pid_input.clone().box_fg(Color::White)
+        };
+
+        self.scan_state.scan_value = if self.mode == AppMode::EditingScanValue {
+            self.scan_state.scan_value.clone().box_fg(Color::Cyan)
+        } else {
+            self.scan_state.scan_value.clone().box_fg(Color::White)
+        };
+    }
+
+    fn handle_global_input(&mut self, event: KeyEvent) {
+        if let KeyCode::Char(c) = event.code {
+            match c {
+                '/' => self.mode = AppMode::EditingScanValue,
+                'p' => self.mode = AppMode::EditingPID,
+                'q' => self.should_exit = true,
+                _ => {}
+            };
+            self.update_focus_colors();
+        }
+    }
+
+    fn handle_pid_input(&mut self, event: KeyEvent) {
+        if let KeyCode::Char(c) = event.code {
             match c {
                 'a' => {
-                    if let Ok(pid) = u32::from_str_radix(&self.pid_text, 10) {
+                    if let Ok(pid) = u32::from_str_radix(&self.pid_input.text, 10) {
                         let _ = self
                             .core_ctl
                             .send_command(CoreCommand::Attach(AttachTarget::Process(pid)));
+                        return;
                     }
                 }
                 'd' => {
                     let _ = self.core_ctl.send_command(CoreCommand::Detach);
+                    return;
                 }
                 _ => {}
             };
-        } else if let KeyCode::Backspace = code {
-            self.pid_text.truncate(self.pid_text.len() - 1);
         }
+        self.pid_input
+            .handle_input(event, |s| u32::from_str_radix(s, 10).is_ok());
     }
 
-    pub fn handle_input(&mut self, code: KeyCode) {
+    fn handle_scan_value_input(&mut self, event: KeyEvent) {
+        self.scan_state.scan_value.handle_input(event, |_| true);
+    }
+
+    pub fn handle_input(&mut self, event: KeyEvent) {
+        // We can always exit an any focus by hitting esc
+        if self.mode != AppMode::None {
+            if KeyCode::Esc == event.code {
+                self.mode = AppMode::None;
+                self.update_focus_colors();
+                return;
+            }
+        }
         match self.mode {
-            AppMode::EditingPID => self.handle_pid_input(code),
+            AppMode::EditingPID => self.handle_pid_input(event),
+            AppMode::EditingScanValue => self.handle_scan_value_input(event),
+            AppMode::None => {
+                self.handle_global_input(event);
+            }
         }
     }
 }

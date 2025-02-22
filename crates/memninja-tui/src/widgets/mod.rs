@@ -1,3 +1,5 @@
+pub mod input_box;
+
 use ratatui::widgets::{Block, Paragraph, StatefulWidget, Widget};
 use std::marker::PhantomData;
 use strum::IntoEnumIterator;

@@ -46,6 +46,11 @@ impl Core {
                         self.attach_status = AttachStatus::Attached(target.clone());
                         Ok(())
                     }
+                    AttachTarget::RemoteProcess(addr) => {
+                        self.process = Some(hoodmem::attach_remote(addr)?);
+                        self.attach_status = AttachStatus::Attached(target.clone());
+                        Ok(())
+                    }
                     _ => Err(anyhow::anyhow!(
                         "Attach not yet implemented for target: {:?}",
                         target

@@ -31,6 +31,10 @@ pub fn attach_external(pid: u32) -> Result<Arc<dyn Process>> {
     LinuxProcess::attach_external(pid)
 }
 
+pub fn attach_remote(addr: &str) -> Result<Arc<dyn Process>> {
+    Ok(Arc::new(platforms::remote::RemoteProcess::connect(addr)?))
+}
+
 /// Attach to an external process on the native system
 pub fn attach_external_by_name(name: &str) -> Result<Arc<dyn Process>> {
     unimplemented!()

@@ -126,7 +126,7 @@ impl RemoteProcessServer {
                     let msg = recv_message(&mut conn);
                     match msg {
                         Ok(msg) => {
-                            self.handle_message(msg);
+                            self.handle_message(msg, &mut conn);
                         }
                         Err(err) => {
                             eprintln!("Error reading message from {conn:?}: {err}");
@@ -139,7 +139,27 @@ impl RemoteProcessServer {
         }
     }
 
-    fn handle_message(&self, msg: RPCMessage) {
+    fn handle_message(&self, msg: RPCMessage, stream: &mut impl Stream) {
         println!("Got message: {msg:?}");
+
+        match msg {
+            RPCMessage::ReadMemory {
+                address,
+                bytes_to_read,
+            } => {
+                let result = self.local_process.read_memory_bytes(address, bytes_to_read);
+                let _ = match result {
+                    Ok(result) => send_message(stream, RPCMessage::ReadMemoryResult(result)),
+                    Err(err) => send_message(stream, RPCMessage::Error(err.to_string())),
+                };
+            }
+            RPCMessage::GetWritableRegions => {
+                let result = self.local_process.get_writable_regions();
+                let _ = send_message(stream, RPCMessage::GetWritableRegionsResult(result));
+            }
+            _ => {
+                eprintln!("Got unknown message from client")
+            }
+        }
     }
 }

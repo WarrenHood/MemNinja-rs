@@ -1,6 +1,7 @@
 mod memninja_core;
 mod widgets;
 
+use clap::{Parser, Subcommand};
 use memninja_core::{
     types::{AttachTarget, MemType, ScanType},
     utils::GenericScanFilter,
@@ -19,12 +20,43 @@ use ratatui::{
 use ratatui::{DefaultTerminal, Frame};
 use widgets::{input_box::InputBox, EnumSelect, EnumSelectState};
 
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+#[command(propagate_version = true)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Run the GUI
+    GUI,
+    /// Attach to a local process and run a server
+    Server {
+        #[arg(short, long)]
+        pid: u32,
+        #[arg(short, long)]
+        addr: String,
+    },
+}
+
 fn main() -> Result<()> {
-    let terminal = ratatui::init();
-    let mut app = App::new();
-    let result = app.run(terminal);
-    ratatui::restore();
-    result
+    let args = Cli::parse();
+
+    match args.command {
+        Commands::GUI => {
+            let terminal = ratatui::init();
+            let mut app = App::new();
+            let result = app.run(terminal);
+            ratatui::restore();
+            result
+        }
+        Commands::Server { pid, addr } => {
+            hoodmem::attach_external_and_run_server(pid, &addr);
+            Ok(())
+        }
+    }
 }
 
 #[derive(PartialEq, Eq)]
@@ -295,12 +327,16 @@ impl<'a> App<'a> {
         if let KeyCode::Char(c) = event.code {
             match c {
                 'a' => {
-                    if let Ok(pid) = u32::from_str_radix(&self.pid_input.text, 10) {
-                        let _ = self
-                            .core_ctl
-                            .send_command(CoreCommand::Attach(AttachTarget::Process(pid)));
-                        return;
-                    }
+                    // TODO: Uncomment this to get back attaching by PID
+                    // if let Ok(pid) = u32::from_str_radix(&self.pid_input.text, 10) {
+                    //     let _ = self
+                    //         .core_ctl
+                    //         .send_command(CoreCommand::Attach(AttachTarget::Process(pid)));
+                    //     return;
+                    // }
+                    let _ = self.core_ctl.send_command(CoreCommand::Attach(
+                        AttachTarget::RemoteProcess("memninja".into()),
+                    ));
                 }
                 'd' => {
                     let _ = self.core_ctl.send_command(CoreCommand::Detach);

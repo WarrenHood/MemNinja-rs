@@ -5,6 +5,7 @@ use strum::{EnumIter, EnumString};
 #[derive(Debug, Clone)]
 pub enum AttachTarget {
     Process(u32),
+    RemoteProcess(String),
     Window(String),
     Other(String),
 }

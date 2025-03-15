@@ -4,6 +4,7 @@ pub mod util;
 
 pub use anyhow::Result;
 use bincode::{Decode, Encode};
+use serde::{Deserialize, Serialize};
 pub use std::ffi::{c_void, CString};
 use std::sync::Arc;
 
@@ -19,7 +20,7 @@ pub trait Process: Send + Sync {
     fn get_writable_regions(&self) -> Vec<MemoryRegion>;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Encode, Decode)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MemoryRegion {
     pub base_address: usize,
     pub size: usize,
@@ -40,11 +41,13 @@ pub fn attach_external_by_name(name: &str) -> Result<Arc<dyn Process>> {
     unimplemented!()
 }
 
-pub fn attach_external_and_run_server(pid: u32, addr: &str) {
-    let server = platforms::remote::RemoteProcessServer::listen(addr, pid);
-    if let Ok(server) = server {
-        server.run();
-    } else {
-        eprintln!("Failed to create server daemon for process {pid} listening on {addr}...")
+pub fn attach_external_and_run_server(pid: u32, _addr: &str) {
+    loop {
+        let server = platforms::remote::RemoteProcessServer::listen(pid);
+        if let Ok(server) = server {
+            server.run();
+        } else {
+            eprintln!("Failed to create server daemon for process {pid}");
+        }
     }
 }

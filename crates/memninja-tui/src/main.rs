@@ -335,7 +335,7 @@ impl<'a> App<'a> {
                     //     return;
                     // }
                     let _ = self.core_ctl.send_command(CoreCommand::Attach(
-                        AttachTarget::RemoteProcess("memninja".into()),
+                        AttachTarget::RemoteProcess(self.pid_input.text.clone()),
                     ));
                 }
                 'd' => {
@@ -345,8 +345,10 @@ impl<'a> App<'a> {
                 _ => {}
             };
         }
-        self.pid_input
-            .handle_input(event, |s| u32::from_str_radix(s, 10).is_ok());
+        // TODO: Uncomment this later
+        // self.pid_input
+        //     .handle_input(event, |s| u32::from_str_radix(s, 10).is_ok());
+        self.pid_input.handle_input(event, |s| true);
     }
 
     fn handle_scan_value_input(&mut self, event: KeyEvent) {

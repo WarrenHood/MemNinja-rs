@@ -1,23 +1,25 @@
 use std::{
     io::{Read, Write},
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{Arc, Mutex},
 };
 
 use crate::{MemoryRegion, Process};
 use anyhow::Result;
-use interprocess::local_socket::{
-    prelude::*, traits::Stream, GenericNamespaced, ListenerOptions, Name, ToNsName,
-};
+use ipc_channel::ipc::{IpcOneShotServer, IpcReceiver, IpcSender};
+use serde::{Deserialize, Serialize};
 
-use bincode::{decode_from_slice, encode_into_slice, Decode, Encode};
-
-#[derive(Debug, Clone)]
-pub struct RemoteProcess {
-    socket: Arc<Mutex<LocalSocketStream>>,
+struct IPCConnection {
+    server_name: String,
+    sender: ipc_channel::ipc::IpcSender<RPCMessage>,
+    receiver: ipc_channel::ipc::IpcReceiver<RPCMessage>,
 }
 
-#[derive(Debug, Encode, Decode)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum RPCMessage {
+    InitConnection {
+        token: String,
+    },
+    AckConnection,
     ReadMemory {
         address: usize,
         bytes_to_read: usize,
@@ -28,34 +30,44 @@ pub enum RPCMessage {
     Error(String),
 }
 
+pub struct RemoteProcess {
+    conn: Arc<Mutex<IPCConnection>>,
+}
+
+impl RemoteProcess {
+    pub fn connect(addr: &str) -> Result<Self> {
+        Ok(Self {
+            conn: Arc::new(Mutex::new(IPCConnection::connect(addr)?)),
+        })
+    }
+}
+
 impl Process for RemoteProcess {
     fn read_memory_bytes(&self, address: usize, bytes_to_read: usize) -> Result<Vec<u8>> {
-        if let Ok(mut sock) = self.socket.lock() {
-            send_message(
-                &mut *sock,
-                RPCMessage::ReadMemory {
-                    address,
-                    bytes_to_read,
-                },
-            )?;
-            let result = recv_message(&mut *sock)?;
+        if let Ok(conn) = self.conn.lock() {
+            conn.sender.send(RPCMessage::ReadMemory {
+                address,
+                bytes_to_read,
+            })?;
+            let result = conn.receiver.recv()?;
             match result {
                 RPCMessage::ReadMemoryResult(items) => Ok(items),
                 RPCMessage::Error(err) => anyhow::bail!(err),
                 _ => anyhow::bail!("Unexpected response from remote process..."),
             }
         } else {
-            anyhow::bail!("Failed to read memory");
+            anyhow::bail!("Couldn't acquire stream lock");
         }
     }
 
     fn get_writable_regions(&self) -> Vec<MemoryRegion> {
-        if let Ok(mut sock) = self.socket.lock() {
-            if let Err(err) = send_message(&mut *sock, RPCMessage::GetWritableRegions) {
+        if let Ok(conn) = self.conn.lock() {
+            if let Err(err) = conn.sender.send(RPCMessage::GetWritableRegions) {
                 eprintln!("Error requesting writable regions from remote process: {err}");
                 return vec![];
             }
-            let result = recv_message(&mut *sock);
+            let result = conn.receiver.recv();
+            println!("Found writable regions response: {result:#?}");
             match result {
                 Ok(RPCMessage::GetWritableRegionsResult(regions)) => regions,
                 _ => {
@@ -64,82 +76,94 @@ impl Process for RemoteProcess {
                 }
             }
         } else {
+            eprintln!("Couldn't acquire stream lock");
             vec![]
         }
     }
 }
 
-impl RemoteProcess {
+impl IPCConnection {
+    /// Used to start listening for a connection (as a server)
+    pub fn listen() -> Result<Self> {
+        let (rx_server, rx_server_name) = IpcOneShotServer::<RPCMessage>::new()?;
+
+        println!("Server listening for new connection with name {rx_server_name}...");
+
+        // Receive token from a client to connect back
+        let (rx, msg) = rx_server.accept()?;
+
+        if let RPCMessage::InitConnection { token } = msg {
+            println!(
+                "Server received new connection. Connecting back to client with token {token}..."
+            );
+            let tx = IpcSender::<RPCMessage>::connect(token)?;
+
+            tx.send(RPCMessage::AckConnection);
+
+            Ok(Self {
+                server_name: rx_server_name,
+                sender: tx,
+                receiver: rx,
+            })
+        } else {
+            anyhow::bail!("Server did not receive a InitConnection message from client");
+        }
+    }
+
+    /// Used to establish bidrectional communication with a listening server (as a client)
     pub fn connect(address: &str) -> Result<Self> {
-        let ns_name: Name = address.to_ns_name::<GenericNamespaced>()?;
+        let tx = IpcSender::connect(address.into())?;
+        let (rx_server, rx_server_name) = IpcOneShotServer::<RPCMessage>::new()?;
+
+        // Init the connection
+        tx.send(RPCMessage::InitConnection {
+            token: rx_server_name.clone(),
+        })?;
+
+        let (rx, _msg) = rx_server.accept()?;
+
         Ok(Self {
-            socket: Arc::new(Mutex::new(LocalSocketStream::connect(ns_name)?)),
+            server_name: rx_server_name,
+            sender: tx,
+            receiver: rx,
         })
     }
 }
 
-fn send_message(sock: &mut impl Stream, msg: RPCMessage) -> Result<()> {
-    let mut msg_buf: Vec<u8> = Vec::with_capacity(size_of::<RPCMessage>());
-    unsafe {
-        msg_buf.set_len(size_of::<RPCMessage>());
-    }
-    encode_into_slice(msg, &mut msg_buf, bincode::config::standard())?;
-    sock.write_all(&msg_buf)?;
-    Ok(())
-}
-
-fn recv_message(sock: &mut impl Stream) -> Result<RPCMessage> {
-    let mut msg_buf: Vec<u8> = Vec::with_capacity(size_of::<RPCMessage>());
-    unsafe {
-        msg_buf.set_len(size_of::<RPCMessage>());
-    }
-    sock.read_exact(&mut msg_buf)?;
-    let (msg, _) = decode_from_slice::<RPCMessage, _>(&msg_buf, bincode::config::standard())?;
-    Ok(msg)
-}
-
 pub struct RemoteProcessServer {
-    listen_sock: LocalSocketListener,
-    local_process: Arc<dyn crate::Process>,
+    conn: Arc<Mutex<IPCConnection>>,
+    local_process: Arc<dyn Process>,
 }
 
 impl RemoteProcessServer {
-    pub fn listen(address: &str, pid: u32) -> Result<Self> {
-        let ns_name: Name = address.to_ns_name::<GenericNamespaced>()?;
-        let listen_opts = ListenerOptions::new().name(ns_name);
-
+    pub fn listen(pid: u32) -> Result<Self> {
+        let conn = IPCConnection::listen()?;
         let local_process: Arc<dyn Process> = crate::attach_external(pid)?;
 
-        println!("Attached to {pid} and listening on {address}...");
-
         Ok(RemoteProcessServer {
-            listen_sock: listen_opts.create_sync()?,
+            conn: Arc::new(Mutex::new(conn)),
             local_process,
         })
     }
 
     pub fn run(&self) {
-        for conn in self.listen_sock.incoming() {
-            if let Ok(mut conn) = conn {
-                println!("Got new connection {conn:?}...");
-                loop {
-                    let msg = recv_message(&mut conn);
-                    match msg {
-                        Ok(msg) => {
-                            self.handle_message(msg, &mut conn);
-                        }
-                        Err(err) => {
-                            eprintln!("Error reading message from {conn:?}: {err}");
-                            break;
-                        }
+        loop {
+            if let Ok(conn) = self.conn.lock() {
+                let msg = conn.receiver.recv();
+                match msg {
+                    Ok(msg) => {
+                        self.handle_message(msg);
+                    }
+                    Err(err) => {
+                        eprintln!("Error reading message: {err}. Aborting connection");
+                        break;
                     }
                 }
-                println!("Terminating connection {conn:?}...");
             }
         }
     }
 
-    fn handle_message(&self, msg: RPCMessage, stream: &mut impl Stream) {
+    fn handle_message(&self, msg: RPCMessage) {
         println!("Got message: {msg:?}");
 
         match msg {
@@ -148,14 +172,28 @@ impl RemoteProcessServer {
                 bytes_to_read,
             } => {
                 let result = self.local_process.read_memory_bytes(address, bytes_to_read);
-                let _ = match result {
-                    Ok(result) => send_message(stream, RPCMessage::ReadMemoryResult(result)),
-                    Err(err) => send_message(stream, RPCMessage::Error(err.to_string())),
-                };
+
+                if let Ok(conn) = self.conn.lock() {
+                    match result {
+                        Ok(result) => conn.sender.send(RPCMessage::ReadMemoryResult(result)),
+                        Err(err) => conn.sender.send(RPCMessage::Error(err.to_string())),
+                    };
+                } else {
+                    eprintln!("Failed to acquire connection lock...");
+                }
             }
             RPCMessage::GetWritableRegions => {
                 let result = self.local_process.get_writable_regions();
-                let _ = send_message(stream, RPCMessage::GetWritableRegionsResult(result));
+                if let Ok(conn) = self.conn.lock() {
+                    let msg_result = conn
+                        .sender
+                        .send(RPCMessage::GetWritableRegionsResult(result));
+                    if let Err(err) = msg_result {
+                        eprintln!("Error sending GetWritableRegionResult msg: {err}");
+                    }
+                } else {
+                    eprintln!("Failed to acquire connection lock...");
+                }
             }
             _ => {
                 eprintln!("Got unknown message from client")

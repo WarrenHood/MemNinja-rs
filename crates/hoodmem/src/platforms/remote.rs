@@ -1,6 +1,6 @@
 use std::{
     io::{Read, Write},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, MutexGuard},
 };
 
 use crate::{MemoryRegion, Process};
@@ -62,21 +62,22 @@ impl Process for RemoteProcess {
 
     fn get_writable_regions(&self) -> Vec<MemoryRegion> {
         if let Ok(conn) = self.conn.lock() {
+            // println!("Requesting writable regions...");
             if let Err(err) = conn.sender.send(RPCMessage::GetWritableRegions) {
-                eprintln!("Error requesting writable regions from remote process: {err}");
+                // eprintln!("Error requesting writable regions from remote process: {err}");
                 return vec![];
             }
             let result = conn.receiver.recv();
-            println!("Found writable regions response: {result:#?}");
+            // println!("Found writable regions response: {result:#?}");
             match result {
                 Ok(RPCMessage::GetWritableRegionsResult(regions)) => regions,
                 _ => {
-                    eprintln!("Unexpected response from remote process...");
+                    // eprintln!("Unexpected response from remote process...");
                     vec![]
                 }
             }
         } else {
-            eprintln!("Couldn't acquire stream lock");
+            // eprintln!("Couldn't acquire stream lock");
             vec![]
         }
     }
@@ -87,7 +88,7 @@ impl IPCConnection {
     pub fn listen() -> Result<Self> {
         let (rx_server, rx_server_name) = IpcOneShotServer::<RPCMessage>::new()?;
 
-        println!("Server listening for new connection with name {rx_server_name}...");
+        println!("Server listening for new connection with name {rx_server_name}");
 
         // Receive token from a client to connect back
         let (rx, msg) = rx_server.accept()?;
@@ -98,7 +99,7 @@ impl IPCConnection {
             );
             let tx = IpcSender::<RPCMessage>::connect(token)?;
 
-            tx.send(RPCMessage::AckConnection);
+            tx.send(RPCMessage::AckConnection)?;
 
             Ok(Self {
                 server_name: rx_server_name,
@@ -120,7 +121,9 @@ impl IPCConnection {
             token: rx_server_name.clone(),
         })?;
 
-        let (rx, _msg) = rx_server.accept()?;
+        let (rx, msg) = rx_server.accept()?;
+
+        // println!("Got initial message from server: {msg:?}");
 
         Ok(Self {
             server_name: rx_server_name,
@@ -152,7 +155,7 @@ impl RemoteProcessServer {
                 let msg = conn.receiver.recv();
                 match msg {
                     Ok(msg) => {
-                        self.handle_message(msg);
+                        self.handle_message(msg, conn);
                     }
                     Err(err) => {
                         eprintln!("Error reading message: {err}. Aborting connection");
@@ -163,7 +166,7 @@ impl RemoteProcessServer {
         }
     }
 
-    fn handle_message(&self, msg: RPCMessage) {
+    fn handle_message(&self, msg: RPCMessage, conn: MutexGuard<'_, IPCConnection>) {
         println!("Got message: {msg:?}");
 
         match msg {
@@ -172,27 +175,22 @@ impl RemoteProcessServer {
                 bytes_to_read,
             } => {
                 let result = self.local_process.read_memory_bytes(address, bytes_to_read);
-
-                if let Ok(conn) = self.conn.lock() {
-                    match result {
-                        Ok(result) => conn.sender.send(RPCMessage::ReadMemoryResult(result)),
-                        Err(err) => conn.sender.send(RPCMessage::Error(err.to_string())),
-                    };
-                } else {
-                    eprintln!("Failed to acquire connection lock...");
+                let result = match result {
+                    Ok(result) => conn.sender.send(RPCMessage::ReadMemoryResult(result)),
+                    Err(err) => conn.sender.send(RPCMessage::Error(err.to_string())),
+                };
+                if let Err(err) = result {
+                    eprintln!("{err}");
                 }
             }
             RPCMessage::GetWritableRegions => {
                 let result = self.local_process.get_writable_regions();
-                if let Ok(conn) = self.conn.lock() {
-                    let msg_result = conn
-                        .sender
-                        .send(RPCMessage::GetWritableRegionsResult(result));
-                    if let Err(err) = msg_result {
-                        eprintln!("Error sending GetWritableRegionResult msg: {err}");
-                    }
-                } else {
-                    eprintln!("Failed to acquire connection lock...");
+                let msg_result = conn
+                    .sender
+                    .send(RPCMessage::GetWritableRegionsResult(result));
+                println!("Sent GetWritableRegionResult msg");
+                if let Err(err) = msg_result {
+                    eprintln!("Error sending GetWritableRegionResult msg: {err}");
                 }
             }
             _ => {

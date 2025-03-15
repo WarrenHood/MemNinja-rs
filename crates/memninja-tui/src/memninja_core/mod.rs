@@ -104,7 +104,7 @@ impl CoreController {
         let core = self.core.clone();
         self.core_thread = Some(std::thread::spawn(move || loop {
             let command = rx.recv();
-            if let Ok(mut core) = core.lock() {
+            if let Ok(mut core) = core.try_lock() {
                 if let Ok(command) = command {
                     let result = command.execute(&mut core);
                     if let Err(err) = result {
@@ -154,7 +154,7 @@ impl CoreController {
 
     /// Gets the attach status of MemNinja Core
     pub fn get_attach_status(&self) -> AttachStatus {
-        if let Ok(core) = self.core.lock() {
+        if let Ok(core) = self.core.try_lock() {
             core.attach_status.clone()
         } else {
             AttachStatus::Unknown
@@ -163,7 +163,7 @@ impl CoreController {
 
     /// Gets the scan status of MemNinja Core
     pub fn get_scan_status(&self) -> ScanStatus {
-        if let Ok(core) = self.core.lock() {
+        if let Ok(core) = self.core.try_lock() {
             core.scan_status.clone()
         } else {
             ScanStatus::Unknown
@@ -172,7 +172,7 @@ impl CoreController {
 
     /// Gets the first n results
     pub fn get_first_results(&self, scan_type: MemType, n: usize) -> Vec<(usize, String)> {
-        if let Ok(core) = self.core.lock() {
+        if let Ok(core) = self.core.try_lock() {
             if let Some(scanner) = core.scanner.as_ref() {
                 match scan_type {
                     MemType::U8 => scanner
@@ -237,7 +237,7 @@ impl CoreController {
 
     /// Checks whether MemNinja core is currently attached to something
     pub fn check_attached(&self) -> bool {
-        if let Ok(core) = self.core.lock() {
+        if let Ok(core) = self.core.try_lock() {
             match core.attach_status {
                 AttachStatus::Detached => false,
                 AttachStatus::Attached(_) => true,
